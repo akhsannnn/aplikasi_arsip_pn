@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  web:
+    build: .
+    container_name: arsip_web
+    ports:
+      - "8090:80"
+    volumes:
+      - ./app:/var/www/html
+      - ./docker/php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_NAME: arsip_db
+      DB_USER: arsip_user
+      DB_PASS: arsip_pass
+
+  db:
+    image: mysql:8.0
+    container_name: arsip_db
+    restart: always
+    environment:
+      MYSQL_DATABASE: arsip_db
+      MYSQL_USER: arsip_user
+      MYSQL_PASSWORD: arsip_pass
+      MYSQL_ROOT_PASSWORD: rootpass
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db:/docker-entrypoint-initdb.d
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: arsip_pma
+    restart: always
+    ports:
+      - "8091:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: arsip_user
+      PMA_PASSWORD: arsip_pass
+    depends_on:
+      - db
+
+volumes:
+  db_data:
