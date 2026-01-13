@@ -1,12 +1,13 @@
 version: '3.8'
 
 services:
+  # 1. Aplikasi Web Kamu (Laravel/PHP Native)
   web:
     build: .
     ports:
-      - "8080:80"
+      - "8080:80"       # Akses web di localhost:8080
     volumes:
-      - .:/var/www/html  # Mount folder lokal ke container
+      - .:/var/www/html # Mount folder lokal ke container
     environment:
       - DB_HOST=db
       - DB_USER=root
@@ -15,6 +16,7 @@ services:
     depends_on:
       - db
 
+  # 2. Database MySQL
   db:
     image: mysql:8.0
     command: --default-authentication-plugin=mysql_native_password
@@ -27,7 +29,20 @@ services:
       # Auto import SQL saat pertama kali jalan
       - ./db:/docker-entrypoint-initdb.d
     ports:
-      - "3306:3306"
+      - "3307:3306"     # Akses DB dari software luar (HeidiSQL/DBeaver) via port 3307
+
+  # 3. phpMyAdmin (BARU DITAMBAHKAN)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    ports:
+      - "8081:80"       # Akses phpMyAdmin di localhost:8081 (Beda port dengan web)
+    environment:
+      - PMA_HOST=db     # Nama service database di atas
+      - PMA_USER=root
+      - PMA_PASSWORD=root
+    depends_on:
+      - db
 
 volumes:
   db_data:

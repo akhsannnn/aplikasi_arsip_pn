@@ -8,10 +8,9 @@ RUN a2enmod rewrite
 
 # Ubah Document Root Apache ke /var/www/html/public
 # Ini adalah standar keamanan industri agar folder 'src' tidak bisa diakses browser
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
-
 # Set Working Directory
 WORKDIR /var/www/html
 

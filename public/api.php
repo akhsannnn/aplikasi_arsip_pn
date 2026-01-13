@@ -14,7 +14,7 @@ require_once '../src/Services/TemplateService.php';
 
 // Init Services
 $database = new Database();
-$db = $database->connect();
+$db = $database->getConnection();
 
 $auth = new AuthService($db);
 $archive = new ArchiveService($db);

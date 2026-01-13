@@ -26,8 +26,4 @@
             MASUK APLIKASI
         </button>
     </form>
-    
-    <p class="mt-6 text-[10px] text-gray-400">
-        Default Login: <b>admin</b> / <b>password</b>
-    </p>
 </div>

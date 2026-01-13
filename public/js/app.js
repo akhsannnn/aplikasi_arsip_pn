@@ -1,22 +1,27 @@
 const app = {
-    // State
+    // State Aplikasi
     year: new Date().getFullYear(),
     folderId: null,
 
+    // --- INITIALIZATION ---
     init: function() {
         this.checkSession();
         this.setupListeners();
     },
 
-    // --- AUTH ---
+    // --- AUTHENTICATION ---
     checkSession: async function() {
         try {
             const res = await this.postData('check_session');
             if(res.success) {
-                document.getElementById('userDisplay').innerText = res.data.user;
+                // User Login -> Tampilkan App
+                if(document.getElementById('userDisplay')) {
+                    document.getElementById('userDisplay').innerText = res.data.user;
+                }
                 this.showScreen('app');
                 this.setView('dashboard');
             } else {
+                // User Guest -> Tampilkan Login
                 this.showScreen('login');
             }
         } catch(e) {
@@ -36,32 +41,35 @@ const app = {
         location.reload();
     },
 
-    // --- NAVIGATION ---
+    // --- NAVIGATION (SPA LOGIC) ---
     showScreen: function(name) {
+        // Toggle antara Login Screen & App Screen
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('appScreen').classList.add('hidden');
-        document.getElementById(name+'Screen').classList.remove('hidden');
+        
+        const target = document.getElementById(name+'Screen');
+        if(target) target.classList.remove('hidden');
     },
 
     setView: function(name) {
-        // Hide All Views
+        // Sembunyikan semua view
         ['viewDashboard', 'viewContent', 'viewTemplates', 'viewTrash'].forEach(id => {
             const el = document.getElementById(id);
             if(el) el.classList.add('hidden');
         });
         
-        // Show Target View
+        // Tampilkan view target
         const target = document.getElementById('view'+name.charAt(0).toUpperCase() + name.slice(1));
         if(target) target.classList.remove('hidden');
 
-        // Trigger Load Data
+        // Load data sesuai view
         if(name === 'dashboard') this.loadDashboard();
         if(name === 'content') this.loadContent();
         if(name === 'trash') this.loadTrash();
         if(name === 'templates') this.loadTemplates();
     },
 
-    // --- DASHBOARD & CONTENT ---
+    // --- DATA LOADING ---
     loadDashboard: async function() {
         const res = await this.postData('dashboard');
         if(res.success) {
@@ -88,7 +96,7 @@ const app = {
         this.loading(false);
     },
 
-    // --- TEMPLATE MANAGER LOGIC ---
+    // --- TEMPLATE MANAGER ---
     loadTemplates: async function() {
         const res = await this.postData('get_templates');
         if(res.success) {
@@ -117,16 +125,14 @@ const app = {
         document.getElementById('detailDesc').innerText = desc;
         document.getElementById('inputTempId').value = id;
         
-        // Setup Delete Button
         const btnDel = document.getElementById('btnDeleteTemplate');
-        btnDel.onclick = () => app.deleteTemplate(id);
+        if(btnDel) btnDel.onclick = () => app.deleteTemplate(id);
 
         const res = await this.postData(`get_template_items&template_id=${id}`);
         if(res.success) {
             const tree = document.getElementById('templateTree');
             const parentSelect = document.getElementById('inputTempParent');
             
-            // Reset Select Options
             parentSelect.innerHTML = '<option value="">-- Di Root (Paling Luar) --</option>';
 
             if(res.data.length === 0) {
@@ -134,16 +140,12 @@ const app = {
                 return;
             }
 
-            // Render Tree & Populate Select
             tree.innerHTML = res.data.map(i => {
-                // Populate Select options
                 const opt = document.createElement('option');
                 opt.value = i.id;
                 opt.text = i.name;
                 parentSelect.add(opt);
 
-                // Simple hierarchy visualization via padding
-                // Note: Real tree hierarchy requires recursive rendering, this is flat list sorted by parent
                 const isChild = i.parent_id !== null;
                 return `
                 <div class="flex items-center justify-between p-2 border-b hover:bg-gray-50 group">
@@ -154,8 +156,7 @@ const app = {
                     <button onclick="app.deleteTemplateItem(${i.id}, ${id}, '${name}', '${desc}')" class="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100 px-2">
                         <i class="fa-solid fa-trash text-xs"></i>
                     </button>
-                </div>
-                `;
+                </div>`;
             }).join('');
         }
     },
@@ -164,9 +165,7 @@ const app = {
         const name = prompt("Nama Template Baru:");
         if(!name) return;
         const desc = prompt("Deskripsi (Opsional):");
-        const fd = new FormData();
-        fd.append('name', name);
-        fd.append('description', desc);
+        const fd = new FormData(); fd.append('name', name); fd.append('description', desc);
         
         await this.postData('create_template', fd);
         this.loadTemplates();
@@ -186,6 +185,59 @@ const app = {
         const fd = new FormData(); fd.append('id', itemId);
         await this.postData('delete_template_item', fd);
         this.loadTemplateDetail(tempId, tempName, tempDesc);
+    },
+
+    // TAMBAHKAN KODE INI:
+    applyTemplateAction: async function() {
+        // 1. Ambil ID Template dari input hidden di halaman detail
+        const templateId = document.getElementById('inputTempId').value;
+        if(!templateId) { 
+            alert("Terjadi kesalahan: ID Template tidak ditemukan. Silakan refresh halaman."); 
+            return; 
+        }
+
+        // 2. Ambil Tahun Target dari Modal
+        const targetYear = document.getElementById('genTargetYear').value;
+        if(!targetYear) { 
+            alert("Harap masukkan tahun target!"); 
+            return; 
+        }
+
+        // 3. Konfirmasi user
+        if(!confirm(`Yakin ingin membuat struktur folder tahun ${targetYear} berdasarkan template ini?`)) return;
+
+        // 4. Kirim Data ke API
+        const fd = new FormData();
+        fd.append('template_id', templateId);
+        fd.append('target_year', targetYear);
+
+        // Tampilkan loading di tombol (opsional UX)
+        const btn = document.querySelector('#modalGenerate button[onclick="app.applyTemplateAction()"]');
+        const oldText = btn.innerText;
+        btn.innerText = 'Memproses...';
+        btn.disabled = true;
+
+        try {
+            const res = await this.postData('apply_template', fd);
+            
+            if(res.success) {
+                alert(res.message);
+                this.closeModal('modalGenerate');
+                
+                // Langsung arahkan user ke tahun yang baru dibuat
+                this.year = targetYear;
+                this.folderId = null; // Reset ke root
+                this.checkSession(); // Refresh tampilan
+            } else {
+                alert(res.message);
+            }
+        } catch (e) {
+            alert("Gagal menghubungi server.");
+        } finally {
+            // Kembalikan tombol seperti semula
+            btn.innerText = oldText;
+            btn.disabled = false;
+        }
     },
 
     // --- RENDERING HELPERS ---
@@ -232,7 +284,7 @@ const app = {
     renderYears: function(years) {
         const allYears = [...new Set([...years.map(y=>parseInt(y)), parseInt(this.year)])].sort((a,b)=>b-a);
         document.getElementById('yearList').innerHTML = allYears.map(y => `
-            <button onclick="app.year=${y};app.folderId=null;app.loadContent()" class="w-full text-left px-3 py-1.5 text-xs rounded transition ${y==this.year ? 'bg-court-green text-white shadow' : 'text-gray-600 hover:bg-gray-100'}">${y}</button>
+            <button onclick="app.year=${y};app.folderId=null;app.loadContent()" class="w-full text-left px-3 py-1 text-xs rounded transition ${y==this.year ? 'bg-court-green text-white shadow' : 'text-gray-600 hover:bg-gray-200'}">${y}</button>
         `).join('');
     },
 
@@ -293,11 +345,10 @@ const app = {
     },
 
     setupListeners: function() {
-        // Login
+        // Form Listeners
         const formLogin = document.getElementById('formLogin');
         if(formLogin) formLogin.onsubmit = (e) => { e.preventDefault(); this.login(new FormData(e.target)); };
         
-        // Create Folder
         const formFolder = document.getElementById('formFolder');
         if(formFolder) formFolder.onsubmit = async (e) => {
             e.preventDefault();
@@ -307,20 +358,17 @@ const app = {
             if(res.success) { this.closeModal('modalFolder'); this.loadContent(); }
         };
 
-        // Upload File
         const formUpload = document.getElementById('formUpload');
         if(formUpload) formUpload.onsubmit = async (e) => {
             e.preventDefault();
             const fd = new FormData(e.target);
             fd.append('folder_id', this.folderId || '');
-            const btn = e.target.querySelector('button[type="submit"]'); 
-            btn.innerText = 'Uploading...'; btn.disabled=true;
+            const btn = e.target.querySelector('button'); btn.innerText = 'Uploading...'; btn.disabled=true;
             const res = await this.postData('upload_file', fd);
             btn.innerText = 'Upload'; btn.disabled=false;
             if(res.success) { this.closeModal('modalUpload'); this.loadContent(); } else { alert(res.message); }
         };
 
-        // Add Template Item
         const formAddTemp = document.getElementById('formAddTemplateFolder');
         if(formAddTemp) {
             formAddTemp.onsubmit = async (e) => {
@@ -328,7 +376,6 @@ const app = {
                 const fd = new FormData(e.target);
                 await this.postData('add_template_item', fd);
                 e.target.reset();
-                // Reload template detail to show new item
                 const id = document.getElementById('inputTempId').value;
                 const name = document.getElementById('detailName').innerText;
                 const desc = document.getElementById('detailDesc').innerText;

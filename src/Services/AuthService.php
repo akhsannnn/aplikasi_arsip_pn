@@ -13,8 +13,9 @@ class AuthService {
         $query = $this->db->query("SELECT * FROM users WHERE username = '$u'");
         $user = $query->fetch_assoc();
 
-        // Verifikasi password (Hash)
-        if ($user && password_verify($password, $user['password'])) {
+        // --- BAGIAN INI YANG KITA UBAH ---
+        // Cek apakah user ada DAN passwordnya sama persis (Plain Text)
+        if ($user && $password == $user['password']) {
             // Set Session
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
@@ -24,3 +25,4 @@ class AuthService {
         return false;
     }
 }
+?>
