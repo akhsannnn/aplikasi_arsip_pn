@@ -1,0 +1,16 @@
+body { font-family: sans-serif; background: #f4f4f4; padding: 20px; }
+.container { max-width: 900px; margin: auto; background: #fff; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+h1, h3 { color: #333; }
+.btn { padding: 8px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; border: none; cursor: pointer;}
+.btn-warning { background: #ffc107; color: #000; }
+.alert { padding: 10px; background: #d4edda; color: #155724; margin-bottom: 15px; }
+
+/* Grid Folder */
+.folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px; }
+.folder-item { background: #ffeb3b; padding: 20px; text-align: center; border-radius: 8px; cursor: pointer; color: #333; text-decoration: none; font-weight: bold;}
+.folder-item:hover { background: #fdd835; }
+
+/* Table Files */
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th { background-color: #f2f2f2; }
