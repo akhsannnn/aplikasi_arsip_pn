@@ -43,7 +43,7 @@ const app = {
     },
 
     // --- LOAD DATA AWAL ---
-    loadSidebar: async function() {
+   loadSidebar: async function() {
         try {
             const res = await this.postData('get_sidebar');
             if(res.success) {
@@ -53,16 +53,46 @@ const app = {
                 if(years.length === 0) {
                     el.innerHTML = '<div class="px-3 text-[10px] text-gray-400">Belum ada arsip.</div>';
                 } else {
-                    el.innerHTML = years.map(y => `
-                        <button onclick="app.year=${y};app.folderId=null;app.setView('content')" 
-                                class="w-full text-left px-3 py-1.5 text-xs rounded transition hover:bg-gray-100 text-gray-600 flex justify-between items-center group">
-                            <span><i class="fa-regular fa-folder mr-2"></i> Arsip ${y}</span>
-                            <i class="fa-solid fa-chevron-right text-[9px] opacity-0 group-hover:opacity-100"></i>
-                        </button>
-                    `).join('');
+                    el.innerHTML = years.map(y => {
+                        // TOMBOL HAPUS TAHUN (HANYA ADMIN)
+                        const deleteYearBtn = this.userRole === 'admin' 
+                            ? `<button onclick="event.stopPropagation();app.deleteYear(${y})" class="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash-can text-[10px]"></i></button>`
+                            : '';
+
+                        return `
+                        <div class="group flex items-center justify-between w-full px-3 py-1.5 rounded transition hover:bg-gray-100 mb-1 cursor-pointer" onclick="app.year=${y};app.folderId=null;app.setView('content')">
+                            <div class="flex items-center text-xs text-gray-600">
+                                <i class="fa-regular fa-folder mr-2 text-court-gold"></i> 
+                                <span class="${y == this.year ? 'font-bold text-court-green' : ''}">Arsip ${y}</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                ${deleteYearBtn}
+                                <i class="fa-solid fa-chevron-right text-[9px] text-gray-300"></i>
+                            </div>
+                        </div>
+                        `;
+                    }).join('');
                 }
             }
         } catch(e) { console.error("Gagal load sidebar", e); }
+    },
+
+    // TAMBAHKAN FUNGSI HAPUS TAHUN
+    deleteYear: async function(year) {
+        if(!confirm(`PERINGATAN ADMIN:\n\nAnda yakin ingin menghapus SELURUH Arsip Tahun ${year}?\nFolder akan dipindahkan ke Tong Sampah.`)) return;
+        
+        const fd = new FormData();
+        fd.append('year', year);
+        
+        const res = await this.postData('delete_year', fd);
+        if(res.success) {
+            alert(res.message);
+            // Refresh halaman jika tahun yang dihapus sedang dibuka
+            if(this.year == year) location.reload();
+            else this.loadSidebar();
+        } else {
+            alert(res.message);
+        }
     },
 
     // --- NAVIGATION (SPA LOGIC) ---
@@ -136,14 +166,21 @@ const app = {
         }
     },
 
-    loadContent: async function() {
+loadContent: async function() {
         this.loading(true);
+        // Request data konten (File & Folder)
         const res = await this.postData(`get_content&year=${this.year}&folder_id=${this.folderId}`);
+        
         if(res.success) {
+            // Render Breadcrumb (Navigasi Atas)
             this.renderBreadcrumb(res.data.breadcrumbs);
+            
+            // Render Folder & File
             this.renderFolders(res.data.folders);
             this.renderFiles(res.data.files);
-            this.renderYears(res.data.years);
+            
+            // HAPUS BARIS INI: this.renderYears(res.data.years); 
+            // Karena sidebar tahun sekarang sudah dihandle oleh loadSidebar() secara terpisah.
         }
         this.loading(false);
     },

@@ -3,74 +3,52 @@ class ArchiveService {
     private $db;
     public function __construct($db) { $this->db = $db; }
 
-    // --- 1. DASHBOARD STATS & HISTORY (UPDATE) ---
+    // --- DASHBOARD STATS (History Upload) ---
     public function getDashboardStats() {
-        // Hitung total
         $f = $this->db->query("SELECT COUNT(*) as c FROM files WHERE deleted_at IS NULL")->fetch_assoc()['c'];
         $d = $this->db->query("SELECT COUNT(*) as c FROM folders WHERE deleted_at IS NULL")->fetch_assoc()['c'];
         
-        // Ambil History Upload Lengkap dengan Nama User
-        // Menggabungkan tabel files dengan users
         $recent = [];
         $sql = "SELECT f.filename, f.uploaded_at, u.username, u.full_name, u.role 
                 FROM files f 
                 LEFT JOIN users u ON f.user_id = u.id 
                 WHERE f.deleted_at IS NULL 
-                ORDER BY f.uploaded_at DESC LIMIT 10"; // Tampilkan 10 aktivitas terakhir
+                ORDER BY f.uploaded_at DESC LIMIT 10"; 
         
         $q = $this->db->query($sql);
-        while($r = $q->fetch_assoc()) {
-            // Format waktu agar lebih enak dibaca (opsional, bisa diurus di JS)
-            $recent[] = $r;
-        }
+        if($q) while($r = $q->fetch_assoc()) { $recent[] = $r; }
 
         return ['total_files' => $f, 'total_folders' => $d, 'recent' => $recent];
     }
 
-    // --- 2. UPLOAD FILE DENGAN USER ID (UPDATE) ---
-    public function uploadFile($file, $year, $folderId, $userId) {
-        $targetDir = __DIR__ . "/../../uploads/$year/";
-        if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
-
-        $fileName = $this->db->real_escape_string($file['name']);
-        $uniqueName = time() . "_" . preg_replace("/[^a-zA-Z0-9.]/", "", $fileName);
-        $targetFile = $targetDir . $uniqueName;
-        $dbPath = "../uploads/$year/$uniqueName"; 
-
-        if (move_uploaded_file($file['tmp_name'], $targetFile)) {
-            $fid = ($folderId && $folderId != 'null') ? "'$folderId'" : "NULL";
-            $uid = $userId ? "'$userId'" : "NULL"; // Simpan ID User
-            $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-            
-            return $this->db->query("INSERT INTO files (folder_id, filename, filepath, filetype, user_id) VALUES ($fid, '$fileName', '$dbPath', '$ext', $uid)");
-        }
-        return false;
-    }
-
-    // --- 3. AMBIL TAHUN UNTUK SIDEBAR (BARU) ---
+    // --- SIDEBAR TAHUNAN ---
     public function getSidebarYears() {
         $years = [];
-        // Ambil tahun yang unik dari tabel folders
         $q = $this->db->query("SELECT DISTINCT year FROM folders WHERE deleted_at IS NULL ORDER BY year DESC");
-        while($r = $q->fetch_assoc()) $years[] = $r['year'];
+        if($q) while($r = $q->fetch_assoc()) $years[] = $r['year'];
         return $years;
     }
 
-    // ... (FUNGSI LAINNYA: getContent, createFolder, deleteItem, getTrash, restoreItem TETAP SAMA) ...
-    // Pastikan fungsi-fungsi lama tetap ada di bawah sini
-    
+    // --- GET CONTENT (Folder & Files) ---
     public function getContent($year, $folderId) {
-        // Query Folder
-        $pidQ = $folderId ? "parent_id = '$folderId'" : "parent_id IS NULL";
+        // Penanganan Parent ID yang ketat agar folder tidak hilang
+        if ($folderId && $folderId != 'null' && $folderId != '') {
+             $pidQ = "parent_id = '$folderId'";
+             $fidQ = "folder_id = '$folderId'";
+        } else {
+             $pidQ = "parent_id IS NULL";
+             $fidQ = "folder_id IS NULL";
+        }
+
+        // Logic Folder
         $folders = [];
         $q = $this->db->query("SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC");
-        while($r = $q->fetch_assoc()) $folders[] = $r;
+        if($q) while($r = $q->fetch_assoc()) $folders[] = $r;
 
-        // Query File
-        $fidQ = $folderId ? "folder_id = '$folderId'" : "folder_id IS NULL";
+        // Logic File (Join User)
         $files = [];
-        $q = $this->db->query("SELECT * FROM files WHERE $fidQ AND deleted_at IS NULL ORDER BY id DESC");
-        while($r = $q->fetch_assoc()) {
+        $q = $this->db->query("SELECT f.*, u.full_name as uploader FROM files f LEFT JOIN users u ON f.user_id = u.id WHERE $fidQ AND f.deleted_at IS NULL ORDER BY f.id DESC");
+        if($q) while($r = $q->fetch_assoc()) {
             $ext = strtolower(pathinfo($r['filename'], PATHINFO_EXTENSION));
             $r['is_previewable'] = in_array($ext, ['pdf', 'jpg', 'jpeg', 'png']);
             $files[] = $r;
@@ -85,36 +63,73 @@ class ArchiveService {
                 if($d) { array_unshift($breadcrumbs, $d); $curr = $d['parent_id']; } else { $curr = null; }
             }
         }
-        
-        // Return tanpa years (karena years sudah dihandle getSidebarYears)
         return ['folders' => $folders, 'files' => $files, 'breadcrumbs' => $breadcrumbs];
     }
 
+    // --- CREATE FOLDER ---
     public function createFolder($name, $desc, $year, $parentId) {
         $n = $this->db->real_escape_string($name);
         $d = $this->db->real_escape_string($desc);
         $pid = ($parentId && $parentId != 'null') ? "'$parentId'" : "NULL";
-        return $this->db->query("INSERT INTO folders (name, description, year, parent_id) VALUES ('$n', '$d', '$year', $pid)");
-    }
-    
-    public function deleteItem($type, $id) {
-        $table = ($type == 'folder') ? 'folders' : 'files';
-        $now = date('Y-m-d H:i:s');
-        return $this->db->query("UPDATE $table SET deleted_at = '$now' WHERE id = '$id'");
+        
+        // Default created_by NULL jika tidak ada sesi (opsional)
+        $uid = isset($_SESSION['user_id']) ? "'".$_SESSION['user_id']."'" : "NULL";
+
+        return $this->db->query("INSERT INTO folders (name, description, year, parent_id, created_by) VALUES ('$n', '$d', '$year', $pid, $uid)");
     }
 
+    // --- UPLOAD FILE ---
+    public function uploadFile($file, $year, $folderId, $userId) {
+        $targetDir = __DIR__ . "/../../uploads/$year/";
+        if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
+
+        $fileName = $this->db->real_escape_string($file['name']);
+        $uniqueName = time() . "_" . preg_replace("/[^a-zA-Z0-9.]/", "", $fileName);
+        $targetFile = $targetDir . $uniqueName;
+        $dbPath = "../uploads/$year/$uniqueName"; 
+
+        if (move_uploaded_file($file['tmp_name'], $targetFile)) {
+            $fid = ($folderId && $folderId != 'null') ? "'$folderId'" : "NULL";
+            $uid = $userId ? "'$userId'" : "NULL";
+            $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+            
+            return $this->db->query("INSERT INTO files (folder_id, filename, filepath, filetype, user_id) VALUES ($fid, '$fileName', '$dbPath', '$ext', $uid)");
+        }
+        return false;
+    }
+
+    // --- DELETE ITEM (Soft Delete + Log User) ---
+    public function deleteItem($type, $id, $userId) {
+        $table = ($type == 'folder') ? 'folders' : 'files';
+        $now = date('Y-m-d H:i:s');
+        $uid = $userId ? "'$userId'" : "NULL";
+        
+        return $this->db->query("UPDATE $table SET deleted_at = '$now', deleted_by = $uid WHERE id = '$id'");
+    }
+
+    // --- DELETE YEAR (Khusus Admin) ---
+    public function deleteYear($year, $userId) {
+        $now = date('Y-m-d H:i:s');
+        $uid = $userId ? "'$userId'" : "NULL";
+        return $this->db->query("UPDATE folders SET deleted_at = '$now', deleted_by = $uid WHERE year = '$year'");
+    }
+
+    // --- TRASH & RESTORE ---
     public function getTrash() {
         $folders = []; $files = [];
-        $q = $this->db->query("SELECT * FROM folders WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
-        while($r=$q->fetch_assoc()) $folders[] = $r;
-        $q = $this->db->query("SELECT * FROM files WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
-        while($r=$q->fetch_assoc()) $files[] = $r;
+        
+        $qF = $this->db->query("SELECT f.*, u.username as deleter FROM folders f LEFT JOIN users u ON f.deleted_by = u.id WHERE f.deleted_at IS NOT NULL ORDER BY f.deleted_at DESC");
+        if($qF) while($r=$qF->fetch_assoc()) $folders[] = $r;
+        
+        $qFi = $this->db->query("SELECT f.*, u.username as deleter FROM files f LEFT JOIN users u ON f.deleted_by = u.id WHERE f.deleted_at IS NOT NULL ORDER BY f.deleted_at DESC");
+        if($qFi) while($r=$qFi->fetch_assoc()) $files[] = $r;
+        
         return ['folders' => $folders, 'files' => $files];
     }
 
     public function restoreItem($type, $id) {
         $table = ($type == 'folder') ? 'folders' : 'files';
-        return $this->db->query("UPDATE $table SET deleted_at = NULL WHERE id = '$id'");
+        return $this->db->query("UPDATE $table SET deleted_at = NULL, deleted_by = NULL WHERE id = '$id'");
     }
 }
 ?>
