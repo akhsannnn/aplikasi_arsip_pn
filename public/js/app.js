@@ -7,6 +7,7 @@ const app = {
     init: function() {
         this.checkSession();
         this.setupListeners();
+        this.loadSidebar();
     },
 
     // --- AUTHENTICATION ---
@@ -39,6 +40,29 @@ const app = {
     logout: async function() {
         await this.postData('logout');
         location.reload();
+    },
+
+    // --- LOAD DATA AWAL ---
+    loadSidebar: async function() {
+        try {
+            const res = await this.postData('get_sidebar');
+            if(res.success) {
+                const years = res.data;
+                const el = document.getElementById('yearList');
+                
+                if(years.length === 0) {
+                    el.innerHTML = '<div class="px-3 text-[10px] text-gray-400">Belum ada arsip.</div>';
+                } else {
+                    el.innerHTML = years.map(y => `
+                        <button onclick="app.year=${y};app.folderId=null;app.setView('content')" 
+                                class="w-full text-left px-3 py-1.5 text-xs rounded transition hover:bg-gray-100 text-gray-600 flex justify-between items-center group">
+                            <span><i class="fa-regular fa-folder mr-2"></i> Arsip ${y}</span>
+                            <i class="fa-solid fa-chevron-right text-[9px] opacity-0 group-hover:opacity-100"></i>
+                        </button>
+                    `).join('');
+                }
+            }
+        } catch(e) { console.error("Gagal load sidebar", e); }
     },
 
     // --- NAVIGATION (SPA LOGIC) ---
@@ -75,12 +99,40 @@ const app = {
         if(res.success) {
             document.getElementById('dashFiles').innerText = res.data.total_files;
             document.getElementById('dashFolders').innerText = res.data.total_folders;
-            document.getElementById('dashRecent').innerHTML = res.data.recent.map(f => `
-                <div class="flex justify-between border-b py-2 text-xs">
-                    <span class="truncate w-2/3"><i class="fa-solid fa-file mr-2 text-gray-400"></i> ${f.filename}</span>
-                    <span class="text-gray-500">${f.uploaded_at}</span>
-                </div>
-            `).join('');
+            
+            const list = document.getElementById('dashRecent');
+            if(res.data.recent.length === 0) {
+                list.innerHTML = '<div class="text-gray-400 text-xs italic">Belum ada aktivitas.</div>';
+            } else {
+                // RENDER TABEL AKTIVITAS
+                list.innerHTML = res.data.recent.map(f => {
+                    // Tentukan warna badge berdasarkan role
+                    const roleBadge = f.role === 'admin' 
+                        ? '<span class="bg-red-100 text-red-600 text-[9px] px-1.5 py-0.5 rounded font-bold ml-1">ADMIN</span>' 
+                        : '<span class="bg-blue-100 text-blue-600 text-[9px] px-1.5 py-0.5 rounded font-bold ml-1">STAFF</span>';
+                    
+                    const uploaderName = f.full_name || f.username || 'Unknown';
+
+                    return `
+                    <div class="flex justify-between items-center border-b border-gray-100 py-3 last:border-0 hover:bg-gray-50 px-2 rounded transition">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <div class="bg-blue-50 text-blue-500 w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-file-arrow-up text-xs"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-xs font-bold text-gray-700 truncate">${f.filename}</div>
+                                <div class="text-[10px] text-gray-400 flex items-center">
+                                    Oleh: <span class="font-medium text-gray-600 ml-1">${uploaderName}</span> ${roleBadge}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-gray-400 shrink-0 ml-2">
+                            ${f.uploaded_at}
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+            }
         }
     },
 
@@ -117,7 +169,6 @@ const app = {
         }
     },
 
-    // --- GANTI FUNGSI loadTemplateDetail DENGAN INI ---
     loadTemplateDetail: async function(id, name, desc) {
         document.getElementById('templateEmptyState').classList.add('hidden');
         document.getElementById('templateDetail').classList.remove('hidden');
@@ -135,29 +186,51 @@ const app = {
             const treeContainer = document.getElementById('templateTree');
             const parentSelect = document.getElementById('inputTempParent');
             
-            // Reset Select Options
-            parentSelect.innerHTML = '<option value="">-- Di Root (Paling Luar) --</option>';
-
-            if(res.data.length === 0) {
-                treeContainer.innerHTML = '<div class="text-center text-gray-400 mt-10 text-xs">Folder Kosong. Tambahkan folder di bawah.</div>';
-                return;
-            }
-
-            // 1. ISI DROPDOWN PARENT (Flat List)
-            // Kita urutkan agar folder parent muncul duluan di dropdown
-            res.data.forEach(item => {
-                const opt = document.createElement('option');
-                opt.value = item.id;
-                opt.text = item.name;
-                parentSelect.add(opt);
-            });
-
-            // 2. BANGUN STRUKTUR TREE (Nested)
+            // 1. BANGUN STRUKTUR TREE (Nested)
+            // Kita pakai struktur ini untuk tampilan List DAN Dropdown
             const rootItems = this.buildTreeStructure(res.data);
 
-            // 3. RENDER TREE KE HTML (Recursive)
-            treeContainer.innerHTML = this.renderTreeRecursive(rootItems, id, name, desc);
+            // 2. ISI DROPDOWN SECARA HIERARKIS (Solusi Masalah Anda)
+            // Ganti istilah "Root" jadi "Folder Utama" agar user paham
+            parentSelect.innerHTML = '<option value="">-- Folder Utama (Paling Atas) --</option>';
+            this.populateDropdownRecursive(rootItems, parentSelect);
+
+            // 3. RENDER TREE VIEW (Daftar Folder di layar)
+            if(res.data.length === 0) {
+                treeContainer.innerHTML = '<div class="text-center text-gray-400 mt-10 text-xs">Folder Kosong. Tambahkan folder di bawah.</div>';
+            } else {
+                treeContainer.innerHTML = this.renderTreeRecursive(rootItems, id, name, desc);
+            }
         }
+    },
+
+    // Fungsi untuk mengisi Dropdown dengan indentasi visual
+    populateDropdownRecursive: function(nodes, selectEl, level = 0) {
+        if (!nodes) return;
+        
+        nodes.forEach(node => {
+            const opt = document.createElement('option');
+            opt.value = node.id;
+            
+            // MEMBUAT VISUALISASI TINGKATAN
+            // Level 0: "Nama Folder"
+            // Level 1: "— Nama Folder"
+            // Level 2: "—— Nama Folder"
+            let prefix = "";
+            for(let i=0; i<level; i++) {
+                prefix += "— "; // Menggunakan garis untuk menandakan anak folder
+            }
+            
+            // Gabungkan garis + nama folder
+            opt.text = prefix + node.name;
+            
+            selectEl.add(opt);
+
+            // Jika punya anak, panggil fungsi ini lagi (Rekursif)
+            if (node.children && node.children.length > 0) {
+                this.populateDropdownRecursive(node.children, selectEl, level + 1);
+            }
+        });
     },
 
     // --- TAMBAHKAN FUNGSI BARU INI DI BAWAH loadTemplateDetail ---
@@ -293,7 +366,7 @@ const app = {
             btn.innerText = oldText; btn.disabled = false;
         }
     },
-    
+
     // --- RENDERING HELPERS ---
     renderFolders: function(folders) {
         const el = document.getElementById('folderContainer');

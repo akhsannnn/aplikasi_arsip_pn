@@ -38,74 +38,125 @@ try {
         Response::json(false, 'Unauthorized');
     }
 
+    // ==================================================================
+    // KEAMANAN: FILTER ROLE (RBAC)
+    // ==================================================================
+    // Daftar aksi yang HANYA boleh dilakukan oleh ADMIN
+    $adminActions = [
+        'delete_item', 
+        'get_trash', 
+        'restore_item', 
+        'create_template', 
+        'add_template_item', 
+        'delete_template', 
+        'delete_template_item', 
+        'apply_template'
+    ];
+
+    // Cek jika aksi termasuk sensitif DAN user bukan admin
+    if (in_array($action, $adminActions)) {
+        if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
+            Response::json(false, 'AKSES DITOLAK: Fitur ini hanya untuk Admin.');
+        }
+    }
+
+    // ==================================================================
+    // ROUTING LOGIC
+    // ==================================================================
     switch ($action) {
-        // Auth
+        // --- Auth & Session ---
         case 'check_session':
-            Response::json(true, 'Session Valid', ['user' => $_SESSION['username']]);
+            // UPDATE: Kirim 'role' agar JS bisa menyembunyikan tombol hapus untuk staff
+            Response::json(true, 'Session Valid', [
+                'user' => $_SESSION['username'],
+                'role' => $_SESSION['role']
+            ]);
             break;
+
         case 'logout':
             session_destroy();
             Response::json(true, 'Logout Berhasil');
             break;
 
-        // Dashboard
+        // --- Dashboard & Sidebar ---
         case 'dashboard':
             Response::json(true, 'Stats Loaded', $archive->getDashboardStats());
             break;
 
-        // Archive Content
+        case 'get_sidebar':
+            // BARU: Mengambil daftar tahun untuk sidebar kiri
+            Response::json(true, 'Sidebar Loaded', $archive->getSidebarYears());
+            break;
+
+        // --- Archive Content ---
         case 'get_content':
             $fid = $_GET['folder_id'] ?? null;
             $data = $archive->getContent($year, $fid);
             Response::json(true, 'Data Loaded', $data);
             break;
+
         case 'create_folder':
             $res = $archive->createFolder($_POST['name'], $_POST['desc'], $year, $_POST['parent_id']);
             Response::json($res, $res ? 'Folder Dibuat' : 'Gagal Membuat Folder');
             break;
+
         case 'upload_file':
             if(!isset($_FILES['file'])) Response::json(false, 'File tidak ditemukan');
-            $res = $archive->uploadFile($_FILES['file'], $year, $_POST['folder_id']);
+            
+            // UPDATE: Ambil ID User dari Session untuk history
+            $userId = $_SESSION['user_id'] ?? null;
+            
+            $res = $archive->uploadFile($_FILES['file'], $year, $_POST['folder_id'], $userId);
             Response::json($res, $res ? 'Upload Berhasil' : 'Gagal Upload');
             break;
+
         case 'delete_item':
+            // (Sudah diamankan oleh Filter Role di atas)
             $res = $archive->deleteItem($_POST['type'], $_POST['id']);
             Response::json($res, 'Item dihapus');
             break;
 
-        // Trash
+        // --- Trash / Sampah ---
         case 'get_trash':
             Response::json(true, 'Trash Loaded', $archive->getTrash());
             break;
+
         case 'restore_item':
             $res = $archive->restoreItem($_POST['type'], $_POST['id']);
             Response::json($res, 'Item dipulihkan');
             break;
 
-        // Template Manager
+        // --- Template Manager ---
         case 'get_templates':
+            // Staff boleh LIHAT template, tapi tidak boleh edit
             Response::json(true, 'Loaded', $template->getTemplates());
             break;
+
         case 'get_template_items':
             $tid = $_GET['template_id'];
             Response::json(true, 'Loaded', $template->getTemplateItems($tid));
             break;
+
         case 'create_template':
             $id = $template->createTemplate($_POST['name'], $_POST['description']);
             Response::json(true, 'Template Dibuat', ['id' => $id]);
             break;
+
         case 'add_template_item':
             $res = $template->addItem($_POST['template_id'], $_POST['name'], $_POST['parent_id']);
             Response::json($res, 'Folder Template Ditambahkan');
             break;
+
         case 'delete_template':
             $template->deleteTemplate($_POST['id']);
             Response::json(true, 'Template Dihapus');
             break;
+
         case 'delete_template_item':
             $template->deleteItem($_POST['id']);
             Response::json(true, 'Folder Template Dihapus');
             break;
+
         case 'apply_template':
             $res = $template->applyTemplate($_POST['template_id'], $_POST['target_year']);
             Response::json($res['success'], $res['message']);
@@ -118,3 +169,4 @@ try {
 } catch (Exception $e) {
     Response::json(false, $e->getMessage());
 }
+?>
