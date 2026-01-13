@@ -117,6 +117,7 @@ const app = {
         }
     },
 
+    // --- GANTI FUNGSI loadTemplateDetail DENGAN INI ---
     loadTemplateDetail: async function(id, name, desc) {
         document.getElementById('templateEmptyState').classList.add('hidden');
         document.getElementById('templateDetail').classList.remove('hidden');
@@ -125,40 +126,102 @@ const app = {
         document.getElementById('detailDesc').innerText = desc;
         document.getElementById('inputTempId').value = id;
         
+        // Setup Delete Button
         const btnDel = document.getElementById('btnDeleteTemplate');
-        if(btnDel) btnDel.onclick = () => app.deleteTemplate(id);
+        btnDel.onclick = () => app.deleteTemplate(id);
 
         const res = await this.postData(`get_template_items&template_id=${id}`);
         if(res.success) {
-            const tree = document.getElementById('templateTree');
+            const treeContainer = document.getElementById('templateTree');
             const parentSelect = document.getElementById('inputTempParent');
             
+            // Reset Select Options
             parentSelect.innerHTML = '<option value="">-- Di Root (Paling Luar) --</option>';
 
             if(res.data.length === 0) {
-                tree.innerHTML = '<div class="text-center text-gray-400 mt-10">Folder Kosong</div>';
+                treeContainer.innerHTML = '<div class="text-center text-gray-400 mt-10 text-xs">Folder Kosong. Tambahkan folder di bawah.</div>';
                 return;
             }
 
-            tree.innerHTML = res.data.map(i => {
+            // 1. ISI DROPDOWN PARENT (Flat List)
+            // Kita urutkan agar folder parent muncul duluan di dropdown
+            res.data.forEach(item => {
                 const opt = document.createElement('option');
-                opt.value = i.id;
-                opt.text = i.name;
+                opt.value = item.id;
+                opt.text = item.name;
                 parentSelect.add(opt);
+            });
 
-                const isChild = i.parent_id !== null;
-                return `
-                <div class="flex items-center justify-between p-2 border-b hover:bg-gray-50 group">
-                    <div class="flex items-center gap-2 text-sm ${isChild ? 'ml-6 text-gray-600' : 'font-bold text-gray-800'}">
-                        <i class="fa-solid ${isChild ? 'fa-turn-up rotate-90 mr-1 text-gray-300' : 'fa-folder text-court-gold'}"></i> 
-                        ${i.name}
+            // 2. BANGUN STRUKTUR TREE (Nested)
+            const rootItems = this.buildTreeStructure(res.data);
+
+            // 3. RENDER TREE KE HTML (Recursive)
+            treeContainer.innerHTML = this.renderTreeRecursive(rootItems, id, name, desc);
+        }
+    },
+
+    // --- TAMBAHKAN FUNGSI BARU INI DI BAWAH loadTemplateDetail ---
+    
+    // Mengubah data flat database menjadi struktur pohon (nested children)
+    buildTreeStructure: function(items) {
+        const rootItems = [];
+        const lookup = {};
+        
+        // Inisialisasi lookup
+        items.forEach(item => {
+            lookup[item.id] = { ...item, children: [] };
+        });
+        
+        // Hubungkan anak ke orang tua
+        items.forEach(item => {
+            if (item.parent_id !== null && lookup[item.parent_id]) {
+                lookup[item.parent_id].children.push(lookup[item.id]);
+            } else {
+                rootItems.push(lookup[item.id]);
+            }
+        });
+        
+        return rootItems;
+    },
+
+    // Fungsi Render Rekursif (Bisa menangani kedalaman tak terbatas)
+    renderTreeRecursive: function(nodes, tempId, tempName, tempDesc, level = 0) {
+        if (!nodes || nodes.length === 0) return '';
+        
+        return nodes.map(node => {
+            // Padding dinamis berdasarkan level kedalaman (20px per level)
+            const paddingLeft = level * 25 + 10;
+            
+            // Ikon folder berbeda warna jika sub-folder
+            const iconClass = level === 0 ? 'text-court-gold fa-folder' : 'text-gray-400 fa-folder-open';
+            const textClass = level === 0 ? 'font-bold text-gray-800' : 'text-gray-600';
+            const borderClass = level === 0 ? 'border-b border-gray-100' : '';
+
+            // Konektor visual (garis L) untuk anak
+            const connector = level > 0 ? `<span class="text-gray-300 mr-2" style="font-family: monospace;">└─</span>` : '';
+
+            return `
+            <div class="relative">
+                <div class="flex items-center justify-between py-2 hover:bg-gray-50 group transition ${borderClass}" 
+                     style="padding-left: ${paddingLeft}px; padding-right: 10px;">
+                    
+                    <div class="flex items-center gap-2 text-sm ${textClass}">
+                        ${connector}
+                        <i class="fa-solid ${iconClass}"></i> 
+                        <span>${node.name}</span>
                     </div>
-                    <button onclick="app.deleteTemplateItem(${i.id}, ${id}, '${name}', '${desc}')" class="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100 px-2">
+
+                    <button onclick="app.deleteTemplateItem(${node.id}, ${tempId}, '${tempName}', '${tempDesc}')" 
+                            class="text-red-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition p-1 rounded hover:bg-red-50"
+                            title="Hapus folder ini">
                         <i class="fa-solid fa-trash text-xs"></i>
                     </button>
-                </div>`;
-            }).join('');
-        }
+                </div>
+                
+                ${this.renderTreeRecursive(node.children, tempId, tempName, tempDesc, level + 1)}
+            </div>
+            `;
+        }).join('');
     },
 
     createTemplate: async function() {
@@ -187,59 +250,50 @@ const app = {
         this.loadTemplateDetail(tempId, tempName, tempDesc);
     },
 
-    // TAMBAHKAN KODE INI:
+// --- PASTE KODE INI SETELAH deleteTemplateItem ---
+
     applyTemplateAction: async function() {
-        // 1. Ambil ID Template dari input hidden di halaman detail
+        // 1. Ambil ID Template & Tahun Target
         const templateId = document.getElementById('inputTempId').value;
-        if(!templateId) { 
-            alert("Terjadi kesalahan: ID Template tidak ditemukan. Silakan refresh halaman."); 
-            return; 
-        }
-
-        // 2. Ambil Tahun Target dari Modal
         const targetYear = document.getElementById('genTargetYear').value;
-        if(!targetYear) { 
-            alert("Harap masukkan tahun target!"); 
-            return; 
-        }
 
-        // 3. Konfirmasi user
-        if(!confirm(`Yakin ingin membuat struktur folder tahun ${targetYear} berdasarkan template ini?`)) return;
+        // 2. Validasi
+        if(!templateId) { alert("Template ID hilang. Refresh halaman."); return; }
+        if(!targetYear) { alert("Masukkan tahun target!"); return; }
 
-        // 4. Kirim Data ke API
+        // 3. Konfirmasi
+        if(!confirm(`Yakin ingin generate folder tahun ${targetYear}?`)) return;
+
+        // 4. Loading State
+        const btn = document.querySelector('#modalGenerate button[onclick="app.applyTemplateAction()"]');
+        const oldText = btn.innerText;
+        btn.innerText = 'Memproses...'; btn.disabled = true;
+
+        // 5. Kirim ke API
         const fd = new FormData();
         fd.append('template_id', templateId);
         fd.append('target_year', targetYear);
 
-        // Tampilkan loading di tombol (opsional UX)
-        const btn = document.querySelector('#modalGenerate button[onclick="app.applyTemplateAction()"]');
-        const oldText = btn.innerText;
-        btn.innerText = 'Memproses...';
-        btn.disabled = true;
-
         try {
             const res = await this.postData('apply_template', fd);
-            
             if(res.success) {
                 alert(res.message);
                 this.closeModal('modalGenerate');
-                
-                // Langsung arahkan user ke tahun yang baru dibuat
+                // Refresh halaman dan buka tahun baru
                 this.year = targetYear;
-                this.folderId = null; // Reset ke root
-                this.checkSession(); // Refresh tampilan
+                this.folderId = null;
+                this.checkSession(); 
             } else {
                 alert(res.message);
             }
-        } catch (e) {
-            alert("Gagal menghubungi server.");
+        } catch(e) {
+            console.error(e);
+            alert("Terjadi kesalahan koneksi.");
         } finally {
-            // Kembalikan tombol seperti semula
-            btn.innerText = oldText;
-            btn.disabled = false;
+            btn.innerText = oldText; btn.disabled = false;
         }
     },
-
+    
     // --- RENDERING HELPERS ---
     renderFolders: function(folders) {
         const el = document.getElementById('folderContainer');
