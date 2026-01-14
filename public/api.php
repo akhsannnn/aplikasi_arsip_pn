@@ -37,6 +37,7 @@ try {
 
     // --- FILTER ROLE ADMIN ---
     $adminActions = [
+        'dashboard',
         'delete_year', 'delete_item', 'get_trash', 'restore_item', 
         'create_template', 'add_template_item', 'delete_template', 'delete_template_item', 'apply_template'
     ];
@@ -47,8 +48,11 @@ try {
     }
 
     switch ($action) {
-        case 'check_session':
-            Response::json(true, 'Session Valid', ['user' => $_SESSION['username'], 'role' => $_SESSION['role']]);
+       case 'check_session':
+            Response::json(true, 'Session Valid', [
+                'user' => $_SESSION['username'],
+                'role' => $_SESSION['role'] // <--- Pastikan baris ini ada
+            ]);
             break;
         case 'logout':
             session_destroy();
@@ -72,11 +76,53 @@ try {
             Response::json($res, $res ? 'Folder Dibuat' : 'Gagal Membuat Folder');
             break;
         case 'upload_file':
-            if(!isset($_FILES['file'])) Response::json(false, 'File tidak ditemukan');
-            // FIX: Kirim user_id
+            // Cek apakah ada file yang dikirim
+            if (!isset($_FILES['files']) || empty($_FILES['files']['name'][0])) {
+                Response::json(false, 'Tidak ada file yang dipilih.');
+            }
+
             $userId = $_SESSION['user_id'] ?? null;
-            $res = $archive->uploadFile($_FILES['file'], $year, $_POST['folder_id'], $userId);
-            Response::json($res, $res ? 'Upload Berhasil' : 'Gagal Upload');
+            $uploadedCount = 0;
+            $failedCount = 0;
+            
+            // Ambil array files dari form
+            $files = $_FILES['files'];
+            $totalFiles = count($files['name']);
+
+            // LOOPING UNTUK MEMPROSES SETIAP FILE
+            for ($i = 0; $i < $totalFiles; $i++) {
+                // Kita harus menyusun ulang array agar sesuai format yang diterima ArchiveService::uploadFile
+                // ArchiveService mengharapkan array tunggal: ['name'=>..., 'tmp_name'=>..., etc]
+                
+                $singleFile = [
+                    'name'      => $files['name'][$i],
+                    'type'      => $files['type'][$i],
+                    'tmp_name'  => $files['tmp_name'][$i],
+                    'error'     => $files['error'][$i],
+                    'size'      => $files['size'][$i]
+                ];
+
+                // Skip jika ada error pada file spesifik ini
+                if ($singleFile['error'] !== UPLOAD_ERR_OK) {
+                    $failedCount++;
+                    continue;
+                }
+
+                // Panggil Service untuk upload 1 file ini
+                if ($archive->uploadFile($singleFile, $year, $_POST['folder_id'], $userId)) {
+                    $uploadedCount++;
+                } else {
+                    $failedCount++;
+                }
+            }
+
+            if ($uploadedCount > 0) {
+                $msg = "$uploadedCount file berhasil diupload.";
+                if ($failedCount > 0) $msg .= " ($failedCount gagal)";
+                Response::json(true, $msg);
+            } else {
+                Response::json(false, "Gagal mengupload file. Silakan coba lagi.");
+            }
             break;
         
         case 'delete_item':
