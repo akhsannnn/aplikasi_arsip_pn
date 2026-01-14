@@ -55,8 +55,12 @@ class ArchiveService {
     }
 
     // --- GET CONTENT ---
+    // ...
+
+    // --- GET CONTENT (PERBAIKAN FOLDER ANAK) ---
     public function getContent($year, $folderId) {
-        // Logic Strict NULL
+        // 1. Logic Penanganan Parent ID
+        // Pastikan 'null' string dianggap sebagai NULL database
         if ($folderId && $folderId !== 'null' && $folderId !== '') {
              $pidQ = "parent_id = '$folderId'";
              $fidQ = "folder_id = '$folderId'";
@@ -65,22 +69,32 @@ class ArchiveService {
              $fidQ = "folder_id IS NULL";
         }
 
-        // Folders
+        // 2. Ambil Folder
+        // Pastikan parent_id sesuai dan tahun sesuai
         $folders = [];
-        $q = $this->db->query("SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC");
+        $sqlFolder = "SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC";
+        $q = $this->db->query($sqlFolder);
         if($q) while($r = $q->fetch_assoc()) $folders[] = $r;
 
-        // Files
-        $yearFilter = "AND filepath LIKE '%uploads/$year/%'";
+        // 3. Ambil File
+        // CATATAN: Saya menghapus filter "filepath LIKE" yang ketat. 
+        // Ini memastikan file tetap muncul meskipun path fisiknya berbeda (misal beda tahun folder).
+        // Selama folder_id cocok, file harus muncul.
         $files = [];
-        $q = $this->db->query("SELECT * FROM files WHERE $fidQ $yearFilter AND deleted_at IS NULL ORDER BY id DESC");
+        $sqlFile = "SELECT f.*, u.full_name as uploader 
+                    FROM files f 
+                    LEFT JOIN users u ON f.user_id = u.id 
+                    WHERE $fidQ AND f.deleted_at IS NULL 
+                    ORDER BY f.id DESC";
+        
+        $q = $this->db->query($sqlFile);
         if($q) while($r = $q->fetch_assoc()) {
             $ext = strtolower(pathinfo($r['filename'], PATHINFO_EXTENSION));
             $r['is_previewable'] = in_array($ext, ['pdf', 'jpg', 'jpeg', 'png']);
             $files[] = $r;
         }
 
-        // Breadcrumbs
+        // 4. Breadcrumbs
         $breadcrumbs = [];
         if($folderId && $folderId !== 'null') {
             $curr = $folderId;
@@ -93,6 +107,7 @@ class ArchiveService {
         return ['folders' => $folders, 'files' => $files, 'breadcrumbs' => $breadcrumbs, 'years' => $this->getSidebarYears()];
     }
 
+    // ...
     // --- CREATE & UPLOAD ---
     public function createFolder($name, $desc, $year, $parentId) {
         $n = $this->db->real_escape_string($name);

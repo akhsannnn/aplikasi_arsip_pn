@@ -38,7 +38,7 @@ try {
     // --- FILTER ROLE ADMIN ---
     $adminActions = [
         'dashboard',
-        'delete_year', 'delete_item', 'get_trash', 'restore_item', 
+        'delete_year', 'get_trash', 'restore_item', 
         'create_template', 'add_template_item', 'delete_template', 'delete_template_item', 'apply_template'
     ];
     if (in_array($action, $adminActions)) {

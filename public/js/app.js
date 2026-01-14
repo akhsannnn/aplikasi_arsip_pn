@@ -130,14 +130,19 @@ const app = {
 
     // ... (Fungsi Dashboard, Template, Trash sama seperti sebelumnya) ...
     // Sertakan fungsi helper renderFolders, renderFiles dll.
-    
-    // --- RENDERING HELPERS (Pastikan bagian ini ada) ---
+    // ...
+
+    // --- RENDERING HELPERS ---
     renderFolders: function(folders) {
         const el = document.getElementById('folderContainer');
         el.innerHTML = folders.map(f => {
-            const delBtn = this.userRole === 'admin' 
+            // PERBAIKAN: Tombol hapus muncul untuk Admin DAN Staff
+            const canDelete = this.userRole === 'admin' || this.userRole === 'staff';
+            
+            const delBtn = canDelete 
                 ? `<button onclick="event.stopPropagation();app.deleteItem('folder', ${f.id})" class="absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 bg-white rounded-full p-1 shadow transition"><i class="fa-solid fa-trash text-xs"></i></button>` 
                 : '';
+
             return `
             <div onclick="app.openFolder(${f.id})" class="bg-white p-3 rounded shadow-sm border hover:border-court-green cursor-pointer relative group transition hover:-translate-y-1">
                 <i class="fa-solid fa-folder text-3xl text-court-green mb-2"></i>
@@ -151,14 +156,19 @@ const app = {
     renderFiles: function(files) {
         const el = document.getElementById('fileList');
         const empty = document.getElementById('emptyState');
+        
         if(files.length === 0) {
             el.innerHTML = ''; empty.classList.remove('hidden');
         } else {
             empty.classList.add('hidden');
             el.innerHTML = files.map(f => {
-                const delBtn = this.userRole === 'admin' 
+                // PERBAIKAN: Tombol hapus muncul untuk Admin DAN Staff
+                const canDelete = this.userRole === 'admin' || this.userRole === 'staff';
+
+                const delBtn = canDelete 
                     ? `<button onclick="app.deleteItem('file', ${f.id})" class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>`
                     : '<span class="text-[10px] text-gray-300"><i class="fa-solid fa-lock"></i></span>';
+                
                 return `
                 <tr class="border-b hover:bg-blue-50 transition">
                     <td class="p-3 flex items-center gap-3">
@@ -171,6 +181,7 @@ const app = {
         }
     },
 
+    // ...
     renderBreadcrumb: function(crumbs) {
         let html = `<span onclick="app.openFolder(null)" class="cursor-pointer font-bold text-court-green hover:underline"><i class="fa-solid fa-house"></i> ${this.year}</span>`;
         crumbs.forEach(c => html += ` <i class="fa-solid fa-chevron-right text-[10px] text-gray-400 mx-1"></i> <span onclick="app.openFolder(${c.id})" class="cursor-pointer hover:underline text-gray-600 text-xs font-bold uppercase">${c.name}</span>`);
