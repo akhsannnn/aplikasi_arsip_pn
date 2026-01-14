@@ -272,40 +272,132 @@ const app = {
         const res = await this.postData('get_trash');
         if(res.success) {
             let html = '';
-            // Render Baris Item Sampah
-            const row = (type, item) => `
-                <div class="flex justify-between items-center bg-white p-3 border-b hover:bg-red-50 transition group">
-                    <div class="flex items-center gap-3 overflow-hidden">
-                        <i class="fa-solid ${type=='folder'?'fa-folder text-court-gold':'fa-file text-gray-400'} text-lg"></i> 
+            
+            // Helper Render Baris Sampah
+            const row = (type, item) => {
+                const icon = type === 'folder' ? 'fa-folder text-court-gold' : 'fa-file-lines text-blue-400';
+                const bgIcon = type === 'folder' ? 'bg-yellow-50' : 'bg-blue-50';
+                
+                return `
+                <div class="bg-white p-4 border-b border-gray-100 flex items-center justify-between hover:bg-gray-50 transition group">
+                    <div class="flex items-center gap-4 overflow-hidden">
+                        <div class="${bgIcon} w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
+                            <i class="fa-solid ${icon} text-lg"></i>
+                        </div>
                         <div class="min-w-0">
-                            <div class="text-sm font-bold text-gray-700 truncate">${item.name || item.filename}</div>
-                            <div class="text-[10px] text-gray-400">
-                                Dihapus oleh: <span class="font-medium">${item.deleter || 'Unknown'}</span> 
-                                (${item.deleted_at})
+                            <div class="text-sm font-bold text-gray-800 truncate">${item.name || item.filename}</div>
+                            <div class="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+                                <span class="bg-gray-100 px-1.5 rounded text-[10px] font-medium text-gray-500 uppercase">${type}</span>
+                                <span><i class="fa-regular fa-trash-can mr-1"></i> ${item.deleter || 'Unknown'}</span>
+                                <span class="text-gray-300">|</span>
+                                <span>${item.deleted_at}</span>
                             </div>
                         </div>
                     </div>
-                    <div class="flex gap-2 shrink-0">
-                        <button onclick="app.restoreItem('${type}', ${item.id})" class="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded text-xs font-bold hover:bg-green-200 transition">
-                            <i class="fa-solid fa-rotate-left mr-1"></i> Pulihkan
+                    
+                    <div class="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button onclick="app.openRestoreModal('${type}', ${item.id}, '${item.name || item.filename}')" 
+                                class="bg-white border border-green-200 text-green-600 hover:bg-green-600 hover:text-white p-2 rounded-lg shadow-sm transition" title="Pulihkan">
+                            <i class="fa-solid fa-rotate-left"></i>
                         </button>
-                        <button onclick="app.deletePermanent('${type}', ${item.id})" class="bg-red-100 text-red-700 border border-red-200 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 transition">
-                            <i class="fa-solid fa-times mr-1"></i> Hapus Permanen
+                        
+                        <button onclick="app.openDeletePermModal('${type}', ${item.id}, '${item.name || item.filename}')" 
+                                class="bg-white border border-red-200 text-red-600 hover:bg-red-600 hover:text-white p-2 rounded-lg shadow-sm transition" title="Hapus Permanen">
+                            <i class="fa-solid fa-times"></i>
                         </button>
                     </div>
                 </div>`;
+            };
             
             if (res.data.folders.length === 0 && res.data.files.length === 0) {
                 document.getElementById('trashList').innerHTML = `
-                    <div class="flex flex-col items-center justify-center h-64 text-gray-300">
-                        <i class="fa-regular fa-trash-can text-4xl mb-2"></i>
-                        <p class="text-sm">Tong sampah kosong.</p>
+                    <div class="flex flex-col items-center justify-center h-96 text-gray-400">
+                        <div class="bg-gray-100 p-6 rounded-full mb-4">
+                            <i class="fa-regular fa-trash-can text-4xl text-gray-300"></i>
+                        </div>
+                        <h3 class="text-sm font-bold text-gray-600">Tong Sampah Kosong</h3>
+                        <p class="text-xs text-gray-400 mt-1">Belum ada item yang dihapus.</p>
                     </div>`;
             } else {
-                res.data.folders.forEach(f => html += row('folder', f));
-                res.data.files.forEach(f => html += row('file', f));
-                document.getElementById('trashList').innerHTML = html;
+                let content = '';
+                res.data.folders.forEach(f => content += row('folder', f));
+                res.data.files.forEach(f => content += row('file', f));
+                document.getElementById('trashList').innerHTML = content;
             }
+        }
+    },
+
+    openRestoreModal: function(type, id, name) {
+        // 1. Simpan data item yang mau diproses ke variabel sementara
+        this.tempAction = { type: type, id: id };
+        
+        // 2. Update teks di modal
+        document.getElementById('restoreItemName').innerText = name;
+        
+        // 3. Tampilkan Modal
+        this.openModal('modalRestore');
+    },
+
+    confirmRestoreAction: async function() {
+        // Ambil data dari variabel sementara
+        const { type, id } = this.tempAction;
+        if(!type || !id) return;
+
+        const fd = new FormData();
+        fd.append('type', type);
+        fd.append('id', id);
+
+        // Ubah tombol jadi loading
+        const btn = document.querySelector('#modalRestore button.bg-green-600');
+        const oldText = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...'; 
+        btn.disabled = true;
+
+        // Kirim ke API
+        const res = await this.postData('restore_item', fd);
+        
+        // Reset tombol
+        btn.innerHTML = oldText; 
+        btn.disabled = false;
+        
+        if(res.success) {
+            this.closeModal('modalRestore');
+            this.loadTrash(); // Refresh list sampah
+            // Optional: Tampilkan notifikasi sukses kecil
+        } else {
+            alert("Gagal memulihkan: " + res.message);
+        }
+    },
+
+    openDeletePermModal: function(type, id, name) {
+        this.tempAction = { type: type, id: id };
+        document.getElementById('delPermItemName').innerText = name;
+        this.openModal('modalDeletePerm');
+    },
+
+    confirmDeletePermAction: async function() {
+        const { type, id } = this.tempAction;
+        if(!type || !id) return;
+
+        const fd = new FormData();
+        fd.append('type', type);
+        fd.append('id', id);
+
+        const btn = document.querySelector('#modalDeletePerm button.bg-red-600');
+        const oldText = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Menghapus...'; 
+        btn.disabled = true;
+
+        const res = await this.postData('delete_permanent', fd);
+        
+        btn.innerHTML = oldText; 
+        btn.disabled = false;
+
+        if(res.success) {
+            this.closeModal('modalDeletePerm');
+            this.loadTrash();
+        } else {
+            alert("Gagal menghapus: " + res.message);
         }
     },
 
@@ -328,32 +420,23 @@ const app = {
     },
 
     // 2. Kosongkan Semua Sampah
+   // Kosongkan Sampah
     emptyTrash: async function() {
-        if(!confirm('BAHAYA: Anda akan menghapus SEMUA item di tong sampah secara permanen.\n\nTindakan ini TIDAK BISA DIBATALKAN. Lanjutkan?')) return;
-        
+        if(!confirm('Yakin ingin mengosongkan sampah? Semua file akan hilang permanen.')) return;
         const res = await this.postData('empty_trash');
         if(res.success) {
-            alert(res.message);
             this.loadTrash();
         } else {
-            alert("Gagal mengosongkan sampah: " + res.message);
+            alert(res.message);
         }
     },
 
     // Update deleteItem biasa agar ada konfirmasi jelas
     deleteItem: async function(type, id) {
-        if(!confirm('Pindahkan item ini ke Tong Sampah?')) return;
-        
-        const fd = new FormData(); 
-        fd.append('type', type); 
-        fd.append('id', id);
-        
+        if(!confirm('Pindahkan ke sampah?')) return;
+        const fd = new FormData(); fd.append('type', type); fd.append('id', id);
         const res = await this.postData('delete_item', fd);
-        if(res.success) {
-            this.loadContent(); // Refresh halaman konten
-        } else {
-            alert(res.message);
-        }
+        if(res.success) this.loadContent();
     },
     
     // Setup Listeners Login, Upload, dll

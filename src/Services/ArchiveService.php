@@ -3,17 +3,15 @@ class ArchiveService {
     private $db;
     public function __construct($db) { $this->db = $db; }
 
-    // --- DASHBOARD (PERBAIKAN: UNION QUERY) ---
+    // --- DASHBOARD (Dengan UNION Query untuk Aktivitas Gabungan) ---
     public function getDashboardStats() {
-        // 1. Hitung Total (Pakai null coalescing agar tidak error jika nol)
         $q1 = $this->db->query("SELECT COUNT(*) as c FROM files WHERE deleted_at IS NULL");
         $f = $q1 ? $q1->fetch_assoc()['c'] : 0;
 
         $q2 = $this->db->query("SELECT COUNT(*) as c FROM folders WHERE deleted_at IS NULL");
         $d = $q2 ? $q2->fetch_assoc()['c'] : 0;
         
-        // 2. Query Gabungan (UNION): Mengambil Upload DAN Pembuatan Folder
-        // Kita beri label 'type' agar JS tahu ini file atau folder
+        // Query Gabungan (Upload & Create Folder)
         $sql = "
             (SELECT 
                 'upload' as type,
@@ -56,9 +54,9 @@ class ArchiveService {
         return $years;
     }
 
-    // --- GET CONTENT (PERBAIKAN: LOGIKA NULL) ---
+    // --- GET CONTENT ---
     public function getContent($year, $folderId) {
-        // Logika Strict: Cek apakah folderId benar-benar ada isinya
+        // Logic Strict NULL
         if ($folderId && $folderId !== 'null' && $folderId !== '') {
              $pidQ = "parent_id = '$folderId'";
              $fidQ = "folder_id = '$folderId'";
@@ -67,13 +65,12 @@ class ArchiveService {
              $fidQ = "folder_id IS NULL";
         }
 
-        // Ambil Folder
+        // Folders
         $folders = [];
         $q = $this->db->query("SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC");
         if($q) while($r = $q->fetch_assoc()) $folders[] = $r;
 
-        // Ambil File (Filter Path Flexible)
-        // Menggunakan % di depan agar support format path lama dan baru
+        // Files
         $yearFilter = "AND filepath LIKE '%uploads/$year/%'";
         $files = [];
         $q = $this->db->query("SELECT * FROM files WHERE $fidQ $yearFilter AND deleted_at IS NULL ORDER BY id DESC");
@@ -96,8 +93,7 @@ class ArchiveService {
         return ['folders' => $folders, 'files' => $files, 'breadcrumbs' => $breadcrumbs, 'years' => $this->getSidebarYears()];
     }
 
-    // ... (Fungsi Upload, CreateFolder, Delete dll biarkan seperti kode terakhir Anda) ...
-    // Pastikan fungsi createFolder dan uploadFile tetap ada di sini
+    // --- CREATE & UPLOAD ---
     public function createFolder($name, $desc, $year, $parentId) {
         $n = $this->db->real_escape_string($name);
         $d = $this->db->real_escape_string($desc);
@@ -123,14 +119,22 @@ class ArchiveService {
         }
         return false;
     }
-    
-    // Fungsi Delete/Trash/Restore (copy dari kode sebelumnya jika perlu, atau biarkan jika sudah ada)
+
+    // --- DELETE (SOFT DELETE) ---
     public function deleteItem($type, $id, $userId) {
         $table = ($type == 'folder') ? 'folders' : 'files';
         $now = date('Y-m-d H:i:s');
         $uid = $userId ? "'$userId'" : "NULL";
         return $this->db->query("UPDATE $table SET deleted_at = '$now', deleted_by = $uid WHERE id = '$id'");
     }
+
+    public function deleteYear($year, $userId) {
+        $now = date('Y-m-d H:i:s');
+        $uid = $userId ? "'$userId'" : "NULL";
+        return $this->db->query("UPDATE folders SET deleted_at = '$now', deleted_by = $uid WHERE year = '$year'");
+    }
+
+    // --- TRASH & RESTORE ---
     public function getTrash() {
         $folders = []; $files = [];
         $qF = $this->db->query("SELECT f.*, u.username as deleter FROM folders f LEFT JOIN users u ON f.deleted_by = u.id WHERE f.deleted_at IS NOT NULL ORDER BY f.deleted_at DESC");
@@ -139,14 +143,60 @@ class ArchiveService {
         if($qFi) while($r=$qFi->fetch_assoc()) $files[] = $r;
         return ['folders' => $folders, 'files' => $files];
     }
+
     public function restoreItem($type, $id) {
         $table = ($type == 'folder') ? 'folders' : 'files';
         return $this->db->query("UPDATE $table SET deleted_at = NULL, deleted_by = NULL WHERE id = '$id'");
     }
-    public function deleteYear($year, $userId) {
-        $now = date('Y-m-d H:i:s');
-        $uid = $userId ? "'$userId'" : "NULL";
-        return $this->db->query("UPDATE folders SET deleted_at = '$now', deleted_by = $uid WHERE year = '$year'");
+
+    // --- FUNGSI BARU YANG SEBELUMNYA HILANG ---
+    
+    // 1. HAPUS PERMANEN (HARD DELETE + UNLINK)
+    public function deletePermanent($type, $id) {
+        if ($type == 'file') {
+            // Ambil path file
+            $q = $this->db->query("SELECT filepath FROM files WHERE id = '$id'");
+            $file = $q->fetch_assoc();
+            
+            // Hapus Fisik
+            if ($file) {
+                $physicalPath = __DIR__ . "/../../public/" . $file['filepath'];
+                if (file_exists($physicalPath)) {
+                    unlink($physicalPath);
+                }
+            }
+            // Hapus DB
+            return $this->db->query("DELETE FROM files WHERE id = '$id'");
+        } else {
+            // Hapus file fisik di dalam folder ini (agar tidak jadi sampah)
+            $q = $this->db->query("SELECT filepath FROM files WHERE folder_id = '$id'");
+            while($f = $q->fetch_assoc()) {
+                $p = __DIR__ . "/../../public/" . $f['filepath'];
+                if(file_exists($p)) unlink($p);
+            }
+            return $this->db->query("DELETE FROM folders WHERE id = '$id'");
+        }
+    }
+
+    // 2. KOSONGKAN SAMPAH
+    public function emptyTrash() {
+        // Ambil semua file sampah
+        $q = $this->db->query("SELECT filepath FROM files WHERE deleted_at IS NOT NULL");
+        $count = 0;
+        
+        while ($file = $q->fetch_assoc()) {
+            $path = __DIR__ . "/../../public/" . $file['filepath'];
+            if (file_exists($path)) {
+                unlink($path);
+            }
+            $count++;
+        }
+
+        // Hapus Data DB
+        $this->db->query("DELETE FROM files WHERE deleted_at IS NOT NULL");
+        $this->db->query("DELETE FROM folders WHERE deleted_at IS NOT NULL");
+
+        return $count;
     }
 }
 ?>

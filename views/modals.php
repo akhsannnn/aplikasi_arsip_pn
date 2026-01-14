@@ -83,3 +83,58 @@
         </div>
     </div>
 </div>
+<div id="modalRestore" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden scale-95 transition-transform transform">
+        <div class="bg-green-600 px-6 py-4 flex items-center gap-3">
+            <div class="bg-white/20 p-2 rounded-full text-white">
+                <i class="fa-solid fa-rotate-left text-xl"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-white text-lg">Pulihkan Item?</h3>
+                <p class="text-green-100 text-xs">Kembalikan item ke lokasi asalnya.</p>
+            </div>
+        </div>
+        <div class="p-6">
+            <p class="text-gray-600 text-sm mb-4">
+                Anda akan memulihkan: <br>
+                <strong id="restoreItemName" class="text-gray-800 text-base">Nama Item</strong>
+            </p>
+            <div class="flex gap-3">
+                <button onclick="app.closeModal('modalRestore')" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Batal</button>
+                <button onclick="app.confirmRestoreAction()" class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 shadow-md transition flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-check"></i> Ya, Pulihkan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modalDeletePerm" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="bg-red-600 px-6 py-4 flex items-center gap-3">
+            <div class="bg-white/20 p-2 rounded-full text-white">
+                <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-white text-lg">Hapus Permanen?</h3>
+                <p class="text-red-100 text-xs">Tindakan ini tidak dapat dibatalkan.</p>
+            </div>
+        </div>
+        <div class="p-6">
+            <p class="text-gray-600 text-sm mb-4">
+                Menghapus secara permanen: <br>
+                <strong id="delPermItemName" class="text-gray-800 text-base">Nama Item</strong>
+            </p>
+            <div class="bg-red-50 border border-red-100 rounded p-3 text-xs text-red-600 mb-6 flex gap-2">
+                <i class="fa-solid fa-info-circle mt-0.5"></i>
+                <span>File yang dihapus permanen akan hilang dari server selamanya.</span>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="app.closeModal('modalDeletePerm')" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Batal</button>
+                <button onclick="app.confirmDeletePermAction()" class="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 shadow-md transition flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-trash"></i> Hapus Sekarang
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
