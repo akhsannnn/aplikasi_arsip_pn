@@ -3,19 +3,17 @@ class ArchiveService {
     private $db;
     public function __construct($db) { $this->db = $db; }
 
-    // --- DASHBOARD ---
-    // ... (kode konstruktor tetap sama) ...
-
+    // --- DASHBOARD (PERBAIKAN: UNION QUERY) ---
     public function getDashboardStats() {
-        // 1. Hitung Total (Pastikan query tidak error)
+        // 1. Hitung Total (Pakai null coalescing agar tidak error jika nol)
         $q1 = $this->db->query("SELECT COUNT(*) as c FROM files WHERE deleted_at IS NULL");
         $f = $q1 ? $q1->fetch_assoc()['c'] : 0;
 
         $q2 = $this->db->query("SELECT COUNT(*) as c FROM folders WHERE deleted_at IS NULL");
         $d = $q2 ? $q2->fetch_assoc()['c'] : 0;
         
-        // 2. Query Gabungan (UNION) untuk Aktivitas Terakhir
-        // Menggabungkan kejadian Upload File dan Create Folder
+        // 2. Query Gabungan (UNION): Mengambil Upload DAN Pembuatan Folder
+        // Kita beri label 'type' agar JS tahu ini file atau folder
         $sql = "
             (SELECT 
                 'upload' as type,
@@ -50,9 +48,7 @@ class ArchiveService {
         return ['total_files' => $f, 'total_folders' => $d, 'recent' => $recent];
     }
 
-    // ... (Sisa fungsi getContent, createFolder, dll TETAP SAMA seperti sebelumnya) ...
-
-    // --- SIDEBAR DATA ---
+    // --- SIDEBAR ---
     public function getSidebarYears() {
         $years = [];
         $q = $this->db->query("SELECT DISTINCT year FROM folders WHERE deleted_at IS NULL ORDER BY year DESC");
@@ -60,10 +56,9 @@ class ArchiveService {
         return $years;
     }
 
-    // --- INTI PERBAIKAN: GET CONTENT ---
+    // --- GET CONTENT (PERBAIKAN: LOGIKA NULL) ---
     public function getContent($year, $folderId) {
-        // 1. Perbaiki Logika NULL vs "null"
-        // JavaScript sering mengirim string 'null', kita harus ubah jadi SQL IS NULL
+        // Logika Strict: Cek apakah folderId benar-benar ada isinya
         if ($folderId && $folderId !== 'null' && $folderId !== '') {
              $pidQ = "parent_id = '$folderId'";
              $fidQ = "folder_id = '$folderId'";
@@ -72,30 +67,23 @@ class ArchiveService {
              $fidQ = "folder_id IS NULL";
         }
 
-        // 2. Ambil Folder
+        // Ambil Folder
         $folders = [];
-        // Folder difilter berdasarkan Tahun
         $q = $this->db->query("SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC");
         if($q) while($r = $q->fetch_assoc()) $folders[] = $r;
 
-        // 3. Ambil File
-        // CATATAN: Kita HAPUS filter path tahun (LIKE 'uploads/$year')
-        // Supaya file yang tersimpan di path '2026' tetap muncul di '2027' jika folder_id-nya benar.
+        // Ambil File (Filter Path Flexible)
+        // Menggunakan % di depan agar support format path lama dan baru
+        $yearFilter = "AND filepath LIKE '%uploads/$year/%'";
         $files = [];
-        $sqlFile = "SELECT f.*, u.full_name as uploader 
-                    FROM files f 
-                    LEFT JOIN users u ON f.user_id = u.id 
-                    WHERE $fidQ AND f.deleted_at IS NULL 
-                    ORDER BY f.id DESC";
-                    
-        $q = $this->db->query($sqlFile);
+        $q = $this->db->query("SELECT * FROM files WHERE $fidQ $yearFilter AND deleted_at IS NULL ORDER BY id DESC");
         if($q) while($r = $q->fetch_assoc()) {
             $ext = strtolower(pathinfo($r['filename'], PATHINFO_EXTENSION));
             $r['is_previewable'] = in_array($ext, ['pdf', 'jpg', 'jpeg', 'png']);
             $files[] = $r;
         }
 
-        // 4. Breadcrumbs
+        // Breadcrumbs
         $breadcrumbs = [];
         if($folderId && $folderId !== 'null') {
             $curr = $folderId;
@@ -105,11 +93,11 @@ class ArchiveService {
             }
         }
         
-        // Kita kembalikan years juga untuk kompatibilitas app.js lama
         return ['folders' => $folders, 'files' => $files, 'breadcrumbs' => $breadcrumbs, 'years' => $this->getSidebarYears()];
     }
 
-    // --- CREATE & UPLOAD ---
+    // ... (Fungsi Upload, CreateFolder, Delete dll biarkan seperti kode terakhir Anda) ...
+    // Pastikan fungsi createFolder dan uploadFile tetap ada di sini
     public function createFolder($name, $desc, $year, $parentId) {
         $n = $this->db->real_escape_string($name);
         $d = $this->db->real_escape_string($desc);
@@ -119,41 +107,30 @@ class ArchiveService {
     }
 
     public function uploadFile($file, $year, $folderId, $userId) {
-        // Simpan ke public/uploads agar bisa diakses
         $targetDir = __DIR__ . "/../../public/uploads/$year/";
         if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
 
         $fileName = $this->db->real_escape_string($file['name']);
         $uniqueName = time() . "_" . preg_replace("/[^a-zA-Z0-9.]/", "", $fileName);
         $targetFile = $targetDir . $uniqueName;
-        
-        // Simpan path relatif untuk DB
         $dbPath = "uploads/$year/$uniqueName"; 
 
         if (move_uploaded_file($file['tmp_name'], $targetFile)) {
             $fid = ($folderId && $folderId != 'null') ? "'$folderId'" : "NULL";
             $uid = $userId ? "'$userId'" : "NULL";
             $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-            
             return $this->db->query("INSERT INTO files (folder_id, filename, filepath, filetype, user_id) VALUES ($fid, '$fileName', '$dbPath', '$ext', $uid)");
         }
         return false;
     }
-
-    // --- DELETE & RESTORE ---
+    
+    // Fungsi Delete/Trash/Restore (copy dari kode sebelumnya jika perlu, atau biarkan jika sudah ada)
     public function deleteItem($type, $id, $userId) {
         $table = ($type == 'folder') ? 'folders' : 'files';
         $now = date('Y-m-d H:i:s');
         $uid = $userId ? "'$userId'" : "NULL";
         return $this->db->query("UPDATE $table SET deleted_at = '$now', deleted_by = $uid WHERE id = '$id'");
     }
-
-    public function deleteYear($year, $userId) {
-        $now = date('Y-m-d H:i:s');
-        $uid = $userId ? "'$userId'" : "NULL";
-        return $this->db->query("UPDATE folders SET deleted_at = '$now', deleted_by = $uid WHERE year = '$year'");
-    }
-
     public function getTrash() {
         $folders = []; $files = [];
         $qF = $this->db->query("SELECT f.*, u.username as deleter FROM folders f LEFT JOIN users u ON f.deleted_by = u.id WHERE f.deleted_at IS NOT NULL ORDER BY f.deleted_at DESC");
@@ -162,71 +139,14 @@ class ArchiveService {
         if($qFi) while($r=$qFi->fetch_assoc()) $files[] = $r;
         return ['folders' => $folders, 'files' => $files];
     }
-
     public function restoreItem($type, $id) {
         $table = ($type == 'folder') ? 'folders' : 'files';
         return $this->db->query("UPDATE $table SET deleted_at = NULL, deleted_by = NULL WHERE id = '$id'");
     }
-
-    // ... fungsi deleteItem, deleteYear, getTrash, restoreItem yang lama TETAP ADA ...
-
-    // --- FUNGSI BARU: HAPUS PERMANEN SATU ITEM ---
-    public function deletePermanent($type, $id) {
-        if ($type == 'file') {
-            // 1. Ambil path file dulu sebelum hapus DB
-            $q = $this->db->query("SELECT filepath FROM files WHERE id = '$id'");
-            $file = $q->fetch_assoc();
-            
-            // 2. Hapus File Fisik
-            if ($file) {
-                // Path relatif dari public/api.php ke public/uploads
-                $physicalPath = __DIR__ . "/../../public/" . $file['filepath'];
-                if (file_exists($physicalPath)) {
-                    unlink($physicalPath);
-                }
-            }
-            // 3. Hapus data di DB
-            return $this->db->query("DELETE FROM files WHERE id = '$id'");
-        
-        } else {
-            // Jika Folder, hapus folder di DB (File di dalamnya akan ikut terhapus karena ON DELETE CASCADE)
-            // TAPI: Kita harus hapus file fisiknya dulu secara manual
-            
-            // Cari semua file di dalam folder ini (termasuk subfolder logic sederhana)
-            // Untuk kesederhanaan, kita asumsikan user sudah mengosongkan folder atau kita hapus paksa
-            // Query untuk mendapatkan semua file yang ada di dalam folder ini
-            $q = $this->db->query("SELECT filepath FROM files WHERE folder_id = '$id'");
-            while($f = $q->fetch_assoc()) {
-                $p = __DIR__ . "/../../public/" . $f['filepath'];
-                if(file_exists($p)) unlink($p);
-            }
-            
-            return $this->db->query("DELETE FROM folders WHERE id = '$id'");
-        }
-    }
-
-    // --- FUNGSI BARU: KOSONGKAN SAMPAH ---
-    public function emptyTrash() {
-        // 1. Ambil semua file yang ada di sampah
-        $q = $this->db->query("SELECT filepath FROM files WHERE deleted_at IS NOT NULL");
-        $count = 0;
-        
-        // 2. Hapus fisik semua file tsb
-        while ($file = $q->fetch_assoc()) {
-            $path = __DIR__ . "/../../public/" . $file['filepath'];
-            if (file_exists($path)) {
-                unlink($path);
-            }
-            $count++;
-        }
-
-        // 3. Bersihkan Database (Hard Delete)
-        $delFiles = $this->db->query("DELETE FROM files WHERE deleted_at IS NOT NULL");
-        $delFolders = $this->db->query("DELETE FROM folders WHERE deleted_at IS NOT NULL");
-
-        return $count;
+    public function deleteYear($year, $userId) {
+        $now = date('Y-m-d H:i:s');
+        $uid = $userId ? "'$userId'" : "NULL";
+        return $this->db->query("UPDATE folders SET deleted_at = '$now', deleted_by = $uid WHERE year = '$year'");
     }
 }
-
-
 ?>

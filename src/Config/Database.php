@@ -9,9 +9,10 @@ class Database {
     public function getConnection() {
         $this->conn = null;
         try {
-            // UBAH KE MYSQLI (Agar support fetch_assoc di Service)
+            // PERBAIKAN: Gunakan MySQLi (bukan PDO) agar kompatibel dengan ArchiveService
             $this->conn = new mysqli($this->host, $this->username, $this->password, $this->db_name);
             
+            // Cek jika ada error koneksi
             if ($this->conn->connect_error) {
                 throw new Exception("Koneksi gagal: " . $this->conn->connect_error);
             }

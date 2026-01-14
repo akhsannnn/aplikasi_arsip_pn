@@ -85,15 +85,13 @@ try {
             $uploadedCount = 0;
             $failedCount = 0;
             
-            // Ambil array files dari form
+            // Ambil array files
             $files = $_FILES['files'];
             $totalFiles = count($files['name']);
 
             // LOOPING UNTUK MEMPROSES SETIAP FILE
             for ($i = 0; $i < $totalFiles; $i++) {
-                // Kita harus menyusun ulang array agar sesuai format yang diterima ArchiveService::uploadFile
-                // ArchiveService mengharapkan array tunggal: ['name'=>..., 'tmp_name'=>..., etc]
-                
+                // Susun ulang array agar sesuai format yang diterima ArchiveService
                 $singleFile = [
                     'name'      => $files['name'][$i],
                     'type'      => $files['type'][$i],
@@ -102,13 +100,12 @@ try {
                     'size'      => $files['size'][$i]
                 ];
 
-                // Skip jika ada error pada file spesifik ini
                 if ($singleFile['error'] !== UPLOAD_ERR_OK) {
                     $failedCount++;
                     continue;
                 }
 
-                // Panggil Service untuk upload 1 file ini
+                // Panggil Service
                 if ($archive->uploadFile($singleFile, $year, $_POST['folder_id'], $userId)) {
                     $uploadedCount++;
                 } else {
@@ -117,11 +114,9 @@ try {
             }
 
             if ($uploadedCount > 0) {
-                $msg = "$uploadedCount file berhasil diupload.";
-                if ($failedCount > 0) $msg .= " ($failedCount gagal)";
-                Response::json(true, $msg);
+                Response::json(true, "$uploadedCount file berhasil diupload.");
             } else {
-                Response::json(false, "Gagal mengupload file. Silakan coba lagi.");
+                Response::json(false, "Gagal mengupload file.");
             }
             break;
         

@@ -202,7 +202,7 @@ const app = {
     closeModal: function(id) { document.getElementById(id).classList.add('hidden'); },
     
     // Load Dashboard, Template, Trash dll pastikan ada
-    loadDashboard: async function() {
+   loadDashboard: async function() {
         const res = await this.postData('dashboard');
         if(res.success) {
             document.getElementById('dashFiles').innerText = res.data.total_files;
@@ -217,22 +217,15 @@ const app = {
                         ? '<span class="bg-red-100 text-red-600 text-[9px] px-1 rounded font-bold ml-1">ADM</span>' 
                         : '<span class="bg-blue-100 text-blue-600 text-[9px] px-1 rounded font-bold ml-1">STF</span>';
                     
-                    // Deteksi Tipe Aktivitas
-                    let icon, actionText, colorClass;
-                    if(item.type === 'upload') {
-                        icon = 'fa-file-arrow-up';
-                        actionText = 'Mengupload file';
-                        colorClass = 'text-blue-500 bg-blue-50';
-                    } else {
-                        icon = 'fa-folder-plus';
-                        actionText = 'Membuat folder';
-                        colorClass = 'text-green-500 bg-green-50';
-                    }
+                    // Logic Icon & Warna Berbeda
+                    let icon = item.type === 'upload' ? 'fa-file-arrow-up' : 'fa-folder-plus';
+                    let bgClass = item.type === 'upload' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500';
+                    let actionText = item.type === 'upload' ? 'Mengupload file' : 'Membuat folder';
 
                     return `
                     <div class="flex items-center justify-between border-b border-gray-50 py-3 last:border-0 hover:bg-gray-50 px-2 rounded transition">
                         <div class="flex items-center gap-3 min-w-0">
-                            <div class="${colorClass} w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                            <div class="${bgClass} w-8 h-8 rounded-full flex items-center justify-center shrink-0">
                                 <i class="fa-solid ${icon} text-xs"></i>
                             </div>
                             <div class="min-w-0">

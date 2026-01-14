@@ -35,7 +35,7 @@
                             <i class="fa-solid fa-cloud-arrow-up text-2xl text-court-gold"></i>
                         </div>
                         <p class="text-sm font-bold text-gray-600 group-hover:text-court-gold">Klik atau Tarik File ke Sini</p>
-                        <p class="text-xs text-gray-400">Support Multiple File (PDF, JPG, DOCX)</p>
+                        <p class="text-xs text-gray-400">Bisa upload banyak file (PDF, JPG, DOCX)</p>
                     </div>
                 </div>
 
@@ -44,7 +44,7 @@
                         <span class="text-xs font-bold text-gray-700">File Terpilih (<span id="fileCount">0</span>)</span>
                         <button type="button" id="btnClearFiles" class="text-[10px] text-red-500 hover:underline font-bold">Hapus Semua</button>
                     </div>
-                    <div id="fileList" class="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                    <div id="fileList" class="space-y-2 max-h-40 overflow-y-auto pr-1">
                         </div>
                 </div>
 
@@ -69,17 +69,17 @@
             <h3 class="text-lg font-bold text-gray-900 mb-2">Terapkan Template?</h3>
             <p class="text-xs text-gray-500 mb-6">Ini akan membuat struktur folder template ke tahun target yang Anda pilih.</p>
             
-            <form id="formGenerateLogic" class="text-left space-y-3">
+            <div class="text-left space-y-3">
                 <div>
                     <label class="block text-xs font-bold text-gray-700 mb-1">Tahun Target</label>
                     <input type="number" id="genTargetYear" class="w-full border border-gray-300 rounded-lg p-2 text-sm text-center font-bold" value="<?= date('Y')+1 ?>">
                 </div>
                 
                 <div class="flex gap-2 pt-2">
-                    <button type="button" onclick="app.closeModal('modalGenerate')" class="w-full px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold">Batal</button>
-                    <button type="button" onclick="app.applyTemplateAction()" class="w-full px-4 py-2 bg-court-green text-white rounded-lg text-xs font-bold shadow hover:bg-court-dark">Generate Sekarang</button>
+                    <button onclick="app.closeModal('modalGenerate')" class="w-full px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold">Batal</button>
+                    <button onclick="app.applyTemplateAction()" class="w-full px-4 py-2 bg-court-green text-white rounded-lg text-xs font-bold shadow hover:bg-court-dark">Generate Sekarang</button>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
 </div>
