@@ -202,9 +202,166 @@ const app = {
     closeModal: function(id) { document.getElementById(id).classList.add('hidden'); },
     
     // Load Dashboard, Template, Trash dll pastikan ada
-    loadDashboard: async function() { /* ... */ },
-    loadTemplates: async function() { /* ... */ },
-    loadTrash: async function() { /* ... */ },
+    loadDashboard: async function() {
+        const res = await this.postData('dashboard');
+        if(res.success) {
+            document.getElementById('dashFiles').innerText = res.data.total_files;
+            document.getElementById('dashFolders').innerText = res.data.total_folders;
+            
+            const list = document.getElementById('dashRecent');
+            if(res.data.recent.length === 0) {
+                list.innerHTML = '<div class="text-gray-400 text-xs italic text-center py-4">Belum ada aktivitas.</div>';
+            } else {
+                list.innerHTML = res.data.recent.map(item => {
+                    const badge = item.role === 'admin' 
+                        ? '<span class="bg-red-100 text-red-600 text-[9px] px-1 rounded font-bold ml-1">ADM</span>' 
+                        : '<span class="bg-blue-100 text-blue-600 text-[9px] px-1 rounded font-bold ml-1">STF</span>';
+                    
+                    // Deteksi Tipe Aktivitas
+                    let icon, actionText, colorClass;
+                    if(item.type === 'upload') {
+                        icon = 'fa-file-arrow-up';
+                        actionText = 'Mengupload file';
+                        colorClass = 'text-blue-500 bg-blue-50';
+                    } else {
+                        icon = 'fa-folder-plus';
+                        actionText = 'Membuat folder';
+                        colorClass = 'text-green-500 bg-green-50';
+                    }
+
+                    return `
+                    <div class="flex items-center justify-between border-b border-gray-50 py-3 last:border-0 hover:bg-gray-50 px-2 rounded transition">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="${colorClass} w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                                <i class="fa-solid ${icon} text-xs"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-xs font-bold text-gray-700 truncate">
+                                    <span class="font-normal text-gray-500">${actionText}:</span> ${item.name}
+                                </div>
+                                <div class="text-[10px] text-gray-400 flex items-center mt-0.5">
+                                    <i class="fa-regular fa-user mr-1"></i> ${item.full_name || 'User'} ${badge}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-gray-400 whitespace-nowrap ml-2 flex flex-col items-end">
+                            <span class="font-mono">${item.time ? item.time.split(' ')[1] : '-'}</span>
+                            <span class="text-[9px]">${item.time ? item.time.split(' ')[0] : '-'}</span>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+        }
+    },
+
+    loadTemplates: async function() {
+        const res = await this.postData('get_templates');
+        if(res.success) {
+            const list = document.getElementById('templateList');
+            if(res.data.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-400 text-xs mt-10">Belum ada template.</div>';
+                return;
+            }
+            list.innerHTML = res.data.map(t => `
+                <div onclick="app.loadTemplateDetail(${t.id}, '${t.name}', '${t.description||''}')" class="p-3 border rounded cursor-pointer hover:bg-blue-50 hover:border-blue-300 flex justify-between items-center group transition">
+                    <div>
+                        <div class="font-bold text-gray-700 text-sm">${t.name}</div>
+                        <div class="text-[10px] text-gray-400 truncate w-32">${t.description||'-'}</div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-gray-300"></i>
+                </div>
+            `).join('');
+        }
+    },
+    
+   // --- LOAD TRASH (UPDATE) ---
+    loadTrash: async function() {
+        const res = await this.postData('get_trash');
+        if(res.success) {
+            let html = '';
+            // Render Baris Item Sampah
+            const row = (type, item) => `
+                <div class="flex justify-between items-center bg-white p-3 border-b hover:bg-red-50 transition group">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <i class="fa-solid ${type=='folder'?'fa-folder text-court-gold':'fa-file text-gray-400'} text-lg"></i> 
+                        <div class="min-w-0">
+                            <div class="text-sm font-bold text-gray-700 truncate">${item.name || item.filename}</div>
+                            <div class="text-[10px] text-gray-400">
+                                Dihapus oleh: <span class="font-medium">${item.deleter || 'Unknown'}</span> 
+                                (${item.deleted_at})
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 shrink-0">
+                        <button onclick="app.restoreItem('${type}', ${item.id})" class="bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded text-xs font-bold hover:bg-green-200 transition">
+                            <i class="fa-solid fa-rotate-left mr-1"></i> Pulihkan
+                        </button>
+                        <button onclick="app.deletePermanent('${type}', ${item.id})" class="bg-red-100 text-red-700 border border-red-200 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 transition">
+                            <i class="fa-solid fa-times mr-1"></i> Hapus Permanen
+                        </button>
+                    </div>
+                </div>`;
+            
+            if (res.data.folders.length === 0 && res.data.files.length === 0) {
+                document.getElementById('trashList').innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-64 text-gray-300">
+                        <i class="fa-regular fa-trash-can text-4xl mb-2"></i>
+                        <p class="text-sm">Tong sampah kosong.</p>
+                    </div>`;
+            } else {
+                res.data.folders.forEach(f => html += row('folder', f));
+                res.data.files.forEach(f => html += row('file', f));
+                document.getElementById('trashList').innerHTML = html;
+            }
+        }
+    },
+
+    // --- ACTIONS BARU (HAPUS PERMANEN) ---
+    
+    // 1. Hapus 1 Item Permanen
+    deletePermanent: async function(type, id) {
+        if(!confirm('PERINGATAN: Apakah Anda yakin ingin menghapus item ini secara PERMANEN?\n\nFile yang dihapus tidak dapat dikembalikan lagi!')) return;
+        
+        const fd = new FormData();
+        fd.append('type', type);
+        fd.append('id', id);
+        
+        const res = await this.postData('delete_permanent', fd);
+        if(res.success) {
+            this.loadTrash(); // Refresh list sampah
+        } else {
+            alert("Gagal menghapus: " + res.message);
+        }
+    },
+
+    // 2. Kosongkan Semua Sampah
+    emptyTrash: async function() {
+        if(!confirm('BAHAYA: Anda akan menghapus SEMUA item di tong sampah secara permanen.\n\nTindakan ini TIDAK BISA DIBATALKAN. Lanjutkan?')) return;
+        
+        const res = await this.postData('empty_trash');
+        if(res.success) {
+            alert(res.message);
+            this.loadTrash();
+        } else {
+            alert("Gagal mengosongkan sampah: " + res.message);
+        }
+    },
+
+    // Update deleteItem biasa agar ada konfirmasi jelas
+    deleteItem: async function(type, id) {
+        if(!confirm('Pindahkan item ini ke Tong Sampah?')) return;
+        
+        const fd = new FormData(); 
+        fd.append('type', type); 
+        fd.append('id', id);
+        
+        const res = await this.postData('delete_item', fd);
+        if(res.success) {
+            this.loadContent(); // Refresh halaman konten
+        } else {
+            alert(res.message);
+        }
+    },
     
     // Setup Listeners Login, Upload, dll
     setupListeners: function() {

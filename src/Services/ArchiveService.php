@@ -4,22 +4,53 @@ class ArchiveService {
     public function __construct($db) { $this->db = $db; }
 
     // --- DASHBOARD ---
+    // ... (kode konstruktor tetap sama) ...
+
     public function getDashboardStats() {
-        $f = $this->db->query("SELECT COUNT(*) as c FROM files WHERE deleted_at IS NULL")->fetch_assoc()['c'];
-        $d = $this->db->query("SELECT COUNT(*) as c FROM folders WHERE deleted_at IS NULL")->fetch_assoc()['c'];
+        // 1. Hitung Total (Pastikan query tidak error)
+        $q1 = $this->db->query("SELECT COUNT(*) as c FROM files WHERE deleted_at IS NULL");
+        $f = $q1 ? $q1->fetch_assoc()['c'] : 0;
+
+        $q2 = $this->db->query("SELECT COUNT(*) as c FROM folders WHERE deleted_at IS NULL");
+        $d = $q2 ? $q2->fetch_assoc()['c'] : 0;
+        
+        // 2. Query Gabungan (UNION) untuk Aktivitas Terakhir
+        // Menggabungkan kejadian Upload File dan Create Folder
+        $sql = "
+            (SELECT 
+                'upload' as type,
+                f.filename as name, 
+                f.uploaded_at as time, 
+                u.full_name, 
+                u.role 
+            FROM files f 
+            LEFT JOIN users u ON f.user_id = u.id 
+            WHERE f.deleted_at IS NULL)
+            
+            UNION ALL
+            
+            (SELECT 
+                'folder' as type,
+                fo.name as name, 
+                fo.created_at as time, 
+                u.full_name, 
+                u.role 
+            FROM folders fo 
+            LEFT JOIN users u ON fo.created_by = u.id 
+            WHERE fo.deleted_at IS NULL)
+            
+            ORDER BY time DESC 
+            LIMIT 10
+        ";
         
         $recent = [];
-        $sql = "SELECT f.filename, f.uploaded_at, u.username, u.full_name, u.role 
-                FROM files f 
-                LEFT JOIN users u ON f.user_id = u.id 
-                WHERE f.deleted_at IS NULL 
-                ORDER BY f.uploaded_at DESC LIMIT 10"; 
-        
         $q = $this->db->query($sql);
         if($q) while($r = $q->fetch_assoc()) { $recent[] = $r; }
 
         return ['total_files' => $f, 'total_folders' => $d, 'recent' => $recent];
     }
+
+    // ... (Sisa fungsi getContent, createFolder, dll TETAP SAMA seperti sebelumnya) ...
 
     // --- SIDEBAR DATA ---
     public function getSidebarYears() {
@@ -136,5 +167,66 @@ class ArchiveService {
         $table = ($type == 'folder') ? 'folders' : 'files';
         return $this->db->query("UPDATE $table SET deleted_at = NULL, deleted_by = NULL WHERE id = '$id'");
     }
+
+    // ... fungsi deleteItem, deleteYear, getTrash, restoreItem yang lama TETAP ADA ...
+
+    // --- FUNGSI BARU: HAPUS PERMANEN SATU ITEM ---
+    public function deletePermanent($type, $id) {
+        if ($type == 'file') {
+            // 1. Ambil path file dulu sebelum hapus DB
+            $q = $this->db->query("SELECT filepath FROM files WHERE id = '$id'");
+            $file = $q->fetch_assoc();
+            
+            // 2. Hapus File Fisik
+            if ($file) {
+                // Path relatif dari public/api.php ke public/uploads
+                $physicalPath = __DIR__ . "/../../public/" . $file['filepath'];
+                if (file_exists($physicalPath)) {
+                    unlink($physicalPath);
+                }
+            }
+            // 3. Hapus data di DB
+            return $this->db->query("DELETE FROM files WHERE id = '$id'");
+        
+        } else {
+            // Jika Folder, hapus folder di DB (File di dalamnya akan ikut terhapus karena ON DELETE CASCADE)
+            // TAPI: Kita harus hapus file fisiknya dulu secara manual
+            
+            // Cari semua file di dalam folder ini (termasuk subfolder logic sederhana)
+            // Untuk kesederhanaan, kita asumsikan user sudah mengosongkan folder atau kita hapus paksa
+            // Query untuk mendapatkan semua file yang ada di dalam folder ini
+            $q = $this->db->query("SELECT filepath FROM files WHERE folder_id = '$id'");
+            while($f = $q->fetch_assoc()) {
+                $p = __DIR__ . "/../../public/" . $f['filepath'];
+                if(file_exists($p)) unlink($p);
+            }
+            
+            return $this->db->query("DELETE FROM folders WHERE id = '$id'");
+        }
+    }
+
+    // --- FUNGSI BARU: KOSONGKAN SAMPAH ---
+    public function emptyTrash() {
+        // 1. Ambil semua file yang ada di sampah
+        $q = $this->db->query("SELECT filepath FROM files WHERE deleted_at IS NOT NULL");
+        $count = 0;
+        
+        // 2. Hapus fisik semua file tsb
+        while ($file = $q->fetch_assoc()) {
+            $path = __DIR__ . "/../../public/" . $file['filepath'];
+            if (file_exists($path)) {
+                unlink($path);
+            }
+            $count++;
+        }
+
+        // 3. Bersihkan Database (Hard Delete)
+        $delFiles = $this->db->query("DELETE FROM files WHERE deleted_at IS NOT NULL");
+        $delFolders = $this->db->query("DELETE FROM folders WHERE deleted_at IS NOT NULL");
+
+        return $count;
+    }
 }
+
+
 ?>

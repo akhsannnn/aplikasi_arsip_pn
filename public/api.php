@@ -173,6 +173,20 @@ try {
             $res = $template->applyTemplate($_POST['template_id'], $_POST['target_year'], $_SESSION['user_id']);
             Response::json($res['success'], $res['message']);
             break;
+        // --- TAMBAHAN UNTUK DELETE PERMANEN ---
+        case 'delete_permanent':
+            if ($_SESSION['role'] !== 'admin') Response::json(false, 'Hanya Admin!');
+            
+            $res = $archive->deletePermanent($_POST['type'], $_POST['id']);
+            Response::json($res, $res ? 'Item dihapus permanen' : 'Gagal menghapus');
+            break;
+
+        case 'empty_trash':
+            if ($_SESSION['role'] !== 'admin') Response::json(false, 'Hanya Admin!');
+            
+            $count = $archive->emptyTrash();
+            Response::json(true, "Sampah dikosongkan. $count file fisik dihapus.");
+            break;
 
         default:
             Response::json(false, "Action '$action' not found");

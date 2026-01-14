@@ -8,19 +8,16 @@ class Database {
 
     public function getConnection() {
         $this->conn = null;
-        
         try {
-            // UBAH DARI PDO KE MYSQLI
+            // UBAH KE MYSQLI (Agar support fetch_assoc di Service)
             $this->conn = new mysqli($this->host, $this->username, $this->password, $this->db_name);
             
-            // Cek error koneksi
             if ($this->conn->connect_error) {
                 throw new Exception("Koneksi gagal: " . $this->conn->connect_error);
             }
         } catch(Exception $exception) {
             echo "Connection error: " . $exception->getMessage();
         }
-        
         return $this->conn;
     }
 }
