@@ -76,7 +76,7 @@ try {
             Response::json($res, $res ? 'Folder Dibuat' : 'Gagal Membuat Folder');
             break;
         case 'upload_file':
-            // 1. Cek Error POST MAX SIZE (File sangat besar hingga data POST kosong)
+            // 1. CEK ERROR SIZE (Jika file terlalu besar hingga POST data kosong)
             if (empty($_FILES) && empty($_POST) && isset($_SERVER['CONTENT_LENGTH']) && $_SERVER['CONTENT_LENGTH'] > 0) {
                 $max = ini_get('post_max_size');
                 Response::json(false, "File terlalu besar! Melebihi batas maksimum server ($max).");
@@ -90,7 +90,7 @@ try {
             $userId = $_SESSION['user_id'] ?? null;
             $uploadedCount = 0;
             $failedCount = 0;
-            $errors = [];
+            $errors = []; // Array untuk menampung pesan error
             
             $files = $_FILES['files'];
             $totalFiles = count($files['name']);
@@ -104,39 +104,43 @@ try {
                     'size'      => $files['size'][$i]
                 ];
 
-                // 3. Cek Error Bawaan PHP
+                // 3. DETEKSI ERROR BAWAAN PHP
                 if ($singleFile['error'] !== UPLOAD_ERR_OK) {
                     $failedCount++;
-                    $msg = 'Error tidak diketahui';
+                    $msg = 'Error Code ' . $singleFile['error'];
                     switch ($singleFile['error']) {
-                        case UPLOAD_ERR_INI_SIZE:   $msg = 'Melebihi upload_max_filesize di php.ini'; break;
-                        case UPLOAD_ERR_FORM_SIZE:  $msg = 'Melebihi MAX_FILE_SIZE form'; break;
-                        case UPLOAD_ERR_PARTIAL:    $msg = 'File hanya terupload sebagian'; break;
-                        case UPLOAD_ERR_NO_FILE:    $msg = 'Tidak ada file yang diupload'; break;
-                        case UPLOAD_ERR_NO_TMP_DIR: $msg = 'Folder temporary hilang'; break;
-                        case UPLOAD_ERR_CANT_WRITE: $msg = 'Gagal menulis ke disk'; break;
+                        case UPLOAD_ERR_INI_SIZE:   $msg = 'File melebihi upload_max_filesize di php.ini'; break;
+                        case UPLOAD_ERR_FORM_SIZE:  $msg = 'File melebihi MAX_FILE_SIZE form'; break;
+                        case UPLOAD_ERR_PARTIAL:    $msg = 'File hanya terupload sebagian (koneksi putus)'; break;
+                        case UPLOAD_ERR_NO_FILE:    $msg = 'Tidak ada file yang dikirim'; break;
+                        case UPLOAD_ERR_NO_TMP_DIR: $msg = 'Folder temporary server hilang'; break;
+                        case UPLOAD_ERR_CANT_WRITE: $msg = 'Gagal menulis file ke disk (Cek Izin/Permission)'; break;
+                        case UPLOAD_ERR_EXTENSION:  $msg = 'Upload dihentikan oleh ekstensi PHP'; break;
                     }
-                    $errors[] = $singleFile['name'] . ": " . $msg;
+                    $errors[] = "File: " . $singleFile['name'] . " -> " . $msg;
                     continue;
                 }
 
-                // 4. Proses Upload ke Arsip
+                // 4. PROSES UPLOAD
+                // Jika error di sini, berarti masalah permission folder public/uploads
                 if ($archive->uploadFile($singleFile, $year, $_POST['folder_id'], $userId)) {
                     $uploadedCount++;
                 } else {
                     $failedCount++;
-                    // Jika masuk sini, berarti move_uploaded_file gagal (kemungkinan permission folder)
-                    $errors[] = $singleFile['name'] . ": Gagal menyimpan file (Cek izin folder public/uploads)";
+                    $errors[] = "File: " . $singleFile['name'] . " -> Gagal memindahkan file (Cek folder public/uploads)";
                 }
             }
 
-            // 5. Response Akhir
+            // 5. RESPONSE LEBIH DETAIL
             if ($uploadedCount > 0) {
                 $msg = "$uploadedCount file berhasil diupload.";
-                if ($failedCount > 0) $msg .= " ($failedCount gagal: " . implode(", ", $errors) . ")";
+                if ($failedCount > 0) {
+                    $msg .= " Namun ada $failedCount yang gagal:\n" . implode("\n", $errors);
+                }
                 Response::json(true, $msg);
             } else {
-                Response::json(false, "Gagal Upload: " . implode(", ", $errors));
+                // Tampilkan semua error yang terjadi
+                Response::json(false, "Gagal Mengupload:\n" . implode("\n", $errors));
             }
             break;
         

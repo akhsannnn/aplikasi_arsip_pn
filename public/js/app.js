@@ -78,23 +78,31 @@ const app = {
 
     // --- 3. DATA LOADING ---
     // --- LOAD DATA (SIDEBAR) ---
+   // --- UPDATE FUNGSI INI DI app.js ---
     loadSidebar: async function() {
         const res = await this.postData('get_sidebar');
         if(res.success) {
             const el = document.getElementById('yearList');
-            // Konversi ke integer
+            
+            // 1. Ambil tahun dari Database
             let years = res.data.map(y => parseInt(y));
             
-            // --- PERBAIKAN UTAMA ---
-            // Pastikan tahun yang sedang dipilih (this.year) SELALU ADA di list.
-            // Ini mencegah aplikasi melompat paksa ke 2027 jika kita sedang di 2026.
+            // 2. FIX: Selalu tampilkan Tahun Kalender Saat Ini (Misal 2026)
+            // Agar user selalu bisa kembali ke tahun ini untuk upload, walau datanya kosong.
+            const calendarYear = new Date().getFullYear();
+            if (!years.includes(calendarYear)) {
+                years.push(calendarYear);
+            }
+
+            // 3. FIX: Selalu tampilkan Tahun yang Sedang Dibuka
+            // Agar highlight tidak hilang saat user membuka tahun kosong
             const currentYear = parseInt(this.year);
             if (!years.includes(currentYear)) {
                 years.push(currentYear);
             }
 
-            // Urutkan dari tahun terbaru (Descending)
-            years.sort((a, b) => b - a);
+            // 4. Urutkan dari terbaru & Hapus duplikat
+            years = [...new Set(years)].sort((a, b) => b - a);
 
             if (years.length === 0) {
                 el.innerHTML = '<div class="px-3 text-[10px] text-gray-400">Belum ada arsip.</div>';
@@ -104,12 +112,11 @@ const app = {
                         ? `<button onclick="event.stopPropagation();app.deleteYear(${y})" class="text-gray-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash-can text-[10px]"></i></button>`
                         : '';
                     
-                    // Style untuk Status Aktif (Responsif)
+                    // Style Highlight
                     const isActive = y === currentYear;
                     const activeClass = isActive 
-                        ? 'font-bold text-court-green bg-green-50 shadow-sm ring-1 ring-green-100' // Style Aktif
-                        : 'hover:bg-gray-50 text-gray-600'; // Style Tidak Aktif
-                    
+                        ? 'font-bold text-court-green bg-green-50 shadow-sm ring-1 ring-green-100' 
+                        : 'hover:bg-gray-50 text-gray-600';
                     const iconClass = isActive ? 'text-court-green' : 'text-court-gold';
                     
                     return `
