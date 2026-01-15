@@ -21,6 +21,6 @@
     </nav>
     
     <div class="p-4 border-t text-[10px] text-gray-400 text-center">
-        &copy; <?= date('Y') ?> Pengadilan Negeri
+        &copy; <?= date('Y') ?> Pengadilan Negeri Makassar
     </div>
 </aside>
