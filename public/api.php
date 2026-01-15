@@ -76,7 +76,13 @@ try {
             Response::json($res, $res ? 'Folder Dibuat' : 'Gagal Membuat Folder');
             break;
         case 'upload_file':
-            // Cek apakah ada file yang dikirim
+            // 1. Cek Error POST MAX SIZE (File sangat besar hingga data POST kosong)
+            if (empty($_FILES) && empty($_POST) && isset($_SERVER['CONTENT_LENGTH']) && $_SERVER['CONTENT_LENGTH'] > 0) {
+                $max = ini_get('post_max_size');
+                Response::json(false, "File terlalu besar! Melebihi batas maksimum server ($max).");
+            }
+
+            // 2. Cek apakah ada file
             if (!isset($_FILES['files']) || empty($_FILES['files']['name'][0])) {
                 Response::json(false, 'Tidak ada file yang dipilih.');
             }
@@ -84,14 +90,12 @@ try {
             $userId = $_SESSION['user_id'] ?? null;
             $uploadedCount = 0;
             $failedCount = 0;
+            $errors = [];
             
-            // Ambil array files
             $files = $_FILES['files'];
             $totalFiles = count($files['name']);
 
-            // LOOPING UNTUK MEMPROSES SETIAP FILE
             for ($i = 0; $i < $totalFiles; $i++) {
-                // Susun ulang array agar sesuai format yang diterima ArchiveService
                 $singleFile = [
                     'name'      => $files['name'][$i],
                     'type'      => $files['type'][$i],
@@ -100,23 +104,39 @@ try {
                     'size'      => $files['size'][$i]
                 ];
 
+                // 3. Cek Error Bawaan PHP
                 if ($singleFile['error'] !== UPLOAD_ERR_OK) {
                     $failedCount++;
+                    $msg = 'Error tidak diketahui';
+                    switch ($singleFile['error']) {
+                        case UPLOAD_ERR_INI_SIZE:   $msg = 'Melebihi upload_max_filesize di php.ini'; break;
+                        case UPLOAD_ERR_FORM_SIZE:  $msg = 'Melebihi MAX_FILE_SIZE form'; break;
+                        case UPLOAD_ERR_PARTIAL:    $msg = 'File hanya terupload sebagian'; break;
+                        case UPLOAD_ERR_NO_FILE:    $msg = 'Tidak ada file yang diupload'; break;
+                        case UPLOAD_ERR_NO_TMP_DIR: $msg = 'Folder temporary hilang'; break;
+                        case UPLOAD_ERR_CANT_WRITE: $msg = 'Gagal menulis ke disk'; break;
+                    }
+                    $errors[] = $singleFile['name'] . ": " . $msg;
                     continue;
                 }
 
-                // Panggil Service
+                // 4. Proses Upload ke Arsip
                 if ($archive->uploadFile($singleFile, $year, $_POST['folder_id'], $userId)) {
                     $uploadedCount++;
                 } else {
                     $failedCount++;
+                    // Jika masuk sini, berarti move_uploaded_file gagal (kemungkinan permission folder)
+                    $errors[] = $singleFile['name'] . ": Gagal menyimpan file (Cek izin folder public/uploads)";
                 }
             }
 
+            // 5. Response Akhir
             if ($uploadedCount > 0) {
-                Response::json(true, "$uploadedCount file berhasil diupload.");
+                $msg = "$uploadedCount file berhasil diupload.";
+                if ($failedCount > 0) $msg .= " ($failedCount gagal: " . implode(", ", $errors) . ")";
+                Response::json(true, $msg);
             } else {
-                Response::json(false, "Gagal mengupload file.");
+                Response::json(false, "Gagal Upload: " . implode(", ", $errors));
             }
             break;
         
