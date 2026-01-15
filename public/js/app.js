@@ -77,40 +77,63 @@ const app = {
     },
 
     // --- 3. DATA LOADING ---
+    // --- LOAD DATA (SIDEBAR) ---
     loadSidebar: async function() {
         const res = await this.postData('get_sidebar');
         if(res.success) {
             const el = document.getElementById('yearList');
-            const years = res.data.map(y => parseInt(y));
+            // Konversi ke integer
+            let years = res.data.map(y => parseInt(y));
             
-            // Logic pindah tahun otomatis jika tahun default tidak ada
-            if (years.length > 0 && !years.includes(parseInt(this.year))) {
-                this.year = years[0];
+            // --- PERBAIKAN UTAMA ---
+            // Pastikan tahun yang sedang dipilih (this.year) SELALU ADA di list.
+            // Ini mencegah aplikasi melompat paksa ke 2027 jika kita sedang di 2026.
+            const currentYear = parseInt(this.year);
+            if (!years.includes(currentYear)) {
+                years.push(currentYear);
             }
+
+            // Urutkan dari tahun terbaru (Descending)
+            years.sort((a, b) => b - a);
 
             if (years.length === 0) {
                 el.innerHTML = '<div class="px-3 text-[10px] text-gray-400">Belum ada arsip.</div>';
             } else {
-                el.innerHTML = res.data.map(y => {
+                el.innerHTML = years.map(y => {
                     const deleteBtn = this.userRole === 'admin' 
                         ? `<button onclick="event.stopPropagation();app.deleteYear(${y})" class="text-gray-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash-can text-[10px]"></i></button>`
                         : '';
-                    const activeClass = y == this.year ? 'font-bold text-court-green bg-green-50' : '';
+                    
+                    // Style untuk Status Aktif (Responsif)
+                    const isActive = y === currentYear;
+                    const activeClass = isActive 
+                        ? 'font-bold text-court-green bg-green-50 shadow-sm ring-1 ring-green-100' // Style Aktif
+                        : 'hover:bg-gray-50 text-gray-600'; // Style Tidak Aktif
+                    
+                    const iconClass = isActive ? 'text-court-green' : 'text-court-gold';
                     
                     return `
-                    <div class="group flex items-center justify-between w-full px-3 py-1.5 rounded transition hover:bg-gray-100 mb-1 cursor-pointer ${activeClass}" onclick="app.year=${y};app.folderId=null;app.setView('content')">
-                        <div class="flex items-center text-xs text-gray-600">
-                            <i class="fa-regular fa-folder mr-2 text-court-gold"></i> 
+                    <div class="group flex items-center justify-between w-full px-3 py-2 rounded-md transition-all duration-200 mb-1 cursor-pointer ${activeClass}" onclick="app.changeYear(${y})">
+                        <div class="flex items-center text-xs">
+                            <i class="fa-regular fa-folder mr-2 ${iconClass} text-sm"></i> 
                             <span>Arsip ${y}</span>
                         </div>
                         <div class="flex items-center gap-1">
                             ${deleteBtn}
-                            <i class="fa-solid fa-chevron-right text-[9px] text-gray-300"></i>
+                            <i class="fa-solid fa-chevron-right text-[9px] ${isActive ? 'text-green-500' : 'text-gray-300'}"></i>
                         </div>
                     </div>`;
                 }).join('');
             }
         }
+    },
+
+    // --- FUNGSI BARU: GANTI TAHUN DENGAN MULUS ---
+    changeYear: function(y) {
+        this.year = y;
+        this.folderId = null; // Reset ke folder root
+        this.loadSidebar();   // Refresh sidebar agar highlight pindah ke tahun yang diklik
+        this.setView('content'); // Pindah ke tampilan konten
     },
 
     loadContent: async function() {
@@ -385,14 +408,22 @@ const app = {
         }
     },
 
-    // --- 7. HELPER FUNCTIONS ---
+   // --- HELPER FUNCTIONS ---
     postData: async function(action, fd = null) {
         const opts = fd ? { method: 'POST', body: fd } : {};
+        
+        // PERBAIKAN PENTING: Tambahkan &year=${this.year} ke URL
+        // Ini memastikan File yang diupload masuk ke tahun yang sedang dibuka, bukan tahun default server.
         try {
-            const res = await fetch(`api.php?action=${action}`, opts);
+            const url = `api.php?action=${action}&year=${this.year}`; 
+            const res = await fetch(url, opts);
+            
             if(!res.ok) throw new Error('API Error');
             return await res.json();
-        } catch(e) { console.error(e); return {success: false, message: 'Server Connection Error'}; }
+        } catch(e) { 
+            console.error(e); 
+            return {success: false, message: 'Server Connection Error'}; 
+        }
     },
     
     loading: function(show) { const el = document.getElementById('loading'); if(el) show ? el.classList.remove('hidden') : el.classList.add('hidden'); },

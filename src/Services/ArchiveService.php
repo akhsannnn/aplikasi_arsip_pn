@@ -58,24 +58,34 @@ class ArchiveService {
     // ...
 
     // --- GET CONTENT (PERBAIKAN FOLDER ANAK) ---
-   public function getContent($year, $folderId) {
+ public function getContent($year, $folderId) {
+        // 1. Tentukan Apakah di Root atau Subfolder
         if ($folderId && $folderId !== 'null' && $folderId !== '') {
+             // KONDISI: SUBFOLDER
              $pidQ = "parent_id = '$folderId'";
              $fidQ = "folder_id = '$folderId'";
+             
+             // PERBAIKAN LOGIKA: 
+             // Di dalam folder, kita matikan filter path tahun.
+             // Kita percaya penuh pada 'folder_id'. Ini memunculkan semua file anak.
+             $yearFilter = ""; 
         } else {
+             // KONDISI: ROOT (FOLDER PALING ATAS)
              $pidQ = "parent_id IS NULL";
              $fidQ = "folder_id IS NULL";
+             
+             // Di root, kita wajib filter path agar tahun tidak bocor/tercampur
+             $yearFilter = "AND filepath LIKE '%uploads/$year/%'";
         }
 
-        // Folder
+        // 2. Ambil Folder
         $folders = [];
+        // Gunakan prepared statement manual atau escape string untuk keamanan (opsional tapi baik)
+        // Disini kita pakai logic standard Anda
         $q = $this->db->query("SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC");
         if($q) while($r = $q->fetch_assoc()) $folders[] = $r;
 
-        // File (FILTER DIINJEKSI KEMBALI)
-        // Perhatikan variabel $yearFilter dimasukkan ke dalam query string
-        $yearFilter = "AND filepath LIKE '%uploads/$year/%'"; 
-        
+        // 3. Ambil File (Dengan Filter Conditional Tadi)
         $files = [];
         $sqlFile = "SELECT f.*, u.full_name as uploader 
                     FROM files f 
@@ -90,7 +100,7 @@ class ArchiveService {
             $files[] = $r;
         }
 
-        // Breadcrumbs
+        // 4. Breadcrumbs
         $breadcrumbs = [];
         if($folderId && $folderId !== 'null') {
             $curr = $folderId;
