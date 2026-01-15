@@ -44,8 +44,8 @@
                         <span class="text-xs font-bold text-gray-700">File Terpilih (<span id="fileCount">0</span>)</span>
                         <button type="button" id="btnClearFiles" class="text-[10px] text-red-500 hover:underline font-bold">Hapus Semua</button>
                     </div>
-                    <div id="fileList" class="space-y-2 max-h-40 overflow-y-auto pr-1">
-                        </div>
+                  <div id="uploadPreviewList" class="space-y-2 max-h-40 overflow-y-auto pr-1">
+</div>
                 </div>
 
             </div>

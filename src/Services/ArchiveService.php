@@ -58,9 +58,7 @@ class ArchiveService {
     // ...
 
     // --- GET CONTENT (PERBAIKAN FOLDER ANAK) ---
-    public function getContent($year, $folderId) {
-        // 1. Logic Penanganan Parent ID
-        // Pastikan 'null' string dianggap sebagai NULL database
+   public function getContent($year, $folderId) {
         if ($folderId && $folderId !== 'null' && $folderId !== '') {
              $pidQ = "parent_id = '$folderId'";
              $fidQ = "folder_id = '$folderId'";
@@ -69,22 +67,20 @@ class ArchiveService {
              $fidQ = "folder_id IS NULL";
         }
 
-        // 2. Ambil Folder
-        // Pastikan parent_id sesuai dan tahun sesuai
+        // Folder
         $folders = [];
-        $sqlFolder = "SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC";
-        $q = $this->db->query($sqlFolder);
+        $q = $this->db->query("SELECT * FROM folders WHERE year='$year' AND $pidQ AND deleted_at IS NULL ORDER BY name ASC");
         if($q) while($r = $q->fetch_assoc()) $folders[] = $r;
 
-        // 3. Ambil File
-        // CATATAN: Saya menghapus filter "filepath LIKE" yang ketat. 
-        // Ini memastikan file tetap muncul meskipun path fisiknya berbeda (misal beda tahun folder).
-        // Selama folder_id cocok, file harus muncul.
+        // File (FILTER DIINJEKSI KEMBALI)
+        // Perhatikan variabel $yearFilter dimasukkan ke dalam query string
+        $yearFilter = "AND filepath LIKE '%uploads/$year/%'"; 
+        
         $files = [];
         $sqlFile = "SELECT f.*, u.full_name as uploader 
                     FROM files f 
                     LEFT JOIN users u ON f.user_id = u.id 
-                    WHERE $fidQ AND f.deleted_at IS NULL 
+                    WHERE $fidQ $yearFilter AND f.deleted_at IS NULL 
                     ORDER BY f.id DESC";
         
         $q = $this->db->query($sqlFile);
@@ -94,7 +90,7 @@ class ArchiveService {
             $files[] = $r;
         }
 
-        // 4. Breadcrumbs
+        // Breadcrumbs
         $breadcrumbs = [];
         if($folderId && $folderId !== 'null') {
             $curr = $folderId;
