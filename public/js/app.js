@@ -279,11 +279,16 @@ const app = {
     },
 
     // --- 5. HELPER RENDER FILE & FOLDER (Termasuk Ikon) ---
-    renderFolders: function(folders) {
+  renderFolders: function(folders) {
         const el = document.getElementById('folderContainer');
         el.innerHTML = folders.map(f => {
             const canDelete = this.userRole === 'admin' || this.userRole === 'staff';
-            const delBtn = canDelete ? `<button onclick="event.stopPropagation();app.deleteItem('folder', ${f.id})" class="absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 bg-white rounded-full p-1 shadow transition"><i class="fa-solid fa-trash text-xs"></i></button>` : '';
+            
+            // PERBAIKAN: Panggil openSoftDeleteModal dengan parameter nama folder
+            const delBtn = canDelete 
+                ? `<button onclick="event.stopPropagation();app.openSoftDeleteModal('folder', ${f.id}, '${f.name}')" class="absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 bg-white rounded-full p-1 shadow transition"><i class="fa-solid fa-trash text-xs"></i></button>` 
+                : '';
+
             return `<div onclick="app.openFolder(${f.id})" class="bg-white p-3 rounded shadow-sm border hover:border-court-green cursor-pointer relative group transition hover:-translate-y-1"><i class="fa-solid fa-folder text-3xl text-court-green mb-2"></i><div class="font-bold text-gray-700 truncate text-xs" title="${f.name}">${f.name}</div><div class="text-[10px] text-gray-400 truncate">${f.description || '-'}</div>${delBtn}</div>`;
         }).join('');
     },
@@ -298,19 +303,21 @@ const app = {
             empty.classList.add('hidden');
             el.innerHTML = files.map(f => {
                 const canDelete = this.userRole === 'admin' || this.userRole === 'staff';
-                const delBtn = canDelete ? `<button onclick="app.deleteItem('file', ${f.id})" class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>` : '<span class="text-[10px] text-gray-300"><i class="fa-solid fa-lock"></i></span>';
                 
-                // --- LOGIKA DETEKSI IKON FILE (EXCEL, WORD, DLL) ---
+                // PERBAIKAN: Panggil openSoftDeleteModal dengan parameter nama file (f.filename)
+                const delBtn = canDelete 
+                    ? `<button onclick="app.openSoftDeleteModal('file', ${f.id}, '${f.filename}')" class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>` 
+                    : '<span class="text-[10px] text-gray-300"><i class="fa-solid fa-lock"></i></span>';
+                
+                // ... (sisa logika icon tetap sama) ...
                 const ext = f.filename.split('.').pop().toLowerCase();
                 let iconClass = 'fa-file text-gray-400';
-                
                 if (['pdf'].includes(ext)) iconClass = 'fa-file-pdf text-red-500';
                 else if (['doc', 'docx'].includes(ext)) iconClass = 'fa-file-word text-blue-500';
                 else if (['xls', 'xlsx', 'csv'].includes(ext)) iconClass = 'fa-file-excel text-green-600';
                 else if (['ppt', 'pptx'].includes(ext)) iconClass = 'fa-file-powerpoint text-orange-500';
                 else if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) iconClass = 'fa-file-image text-purple-500';
                 else if (['zip', 'rar'].includes(ext)) iconClass = 'fa-file-zipper text-yellow-600';
-                // ----------------------------------------------------
 
                 return `
                 <tr class="border-b hover:bg-blue-50 transition">
@@ -444,6 +451,39 @@ const app = {
     openDeletePermModal: function(type, id, name) { this.tempAction = { type: type, id: id }; document.getElementById('delPermItemName').innerText = name; this.openModal('modalDeletePerm'); },
     confirmDeletePermAction: async function() { const { type, id } = this.tempAction; if(!type || !id) return; const fd = new FormData(); fd.append('type', type); fd.append('id', id); const btn = document.querySelector('#modalDeletePerm button.bg-red-600'); const oldText = btn.innerHTML; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Menghapus...'; btn.disabled = true; const res = await this.postData('delete_permanent', fd); btn.innerHTML = oldText; btn.disabled = false; if(res.success) { this.closeModal('modalDeletePerm'); this.loadTrash(); } else { alert(res.message); } },
     
+    // --- SOFT DELETE MODAL LOGIC ---
+    openSoftDeleteModal: function(type, id, name) {
+        this.tempAction = { type: type, id: id };
+        document.getElementById('softDeleteName').innerText = name;
+        this.openModal('modalSoftDelete');
+    },
+
+    confirmSoftDeleteAction: async function() {
+        const { type, id } = this.tempAction;
+        if(!type || !id) return;
+
+        const btn = document.querySelector('#modalSoftDelete button.bg-orange-500');
+        const oldText = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...';
+        btn.disabled = true;
+
+        const fd = new FormData();
+        fd.append('type', type);
+        fd.append('id', id);
+
+        const res = await this.postData('delete_item', fd);
+        
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+
+        if(res.success) {
+            this.closeModal('modalSoftDelete');
+            this.loadContent(); // Refresh halaman folder saat ini
+        } else {
+            alert(res.message);
+        }
+    },
+
     emptyTrash: async function() { if(!confirm('Yakin ingin mengosongkan sampah?')) return; const res = await this.postData('empty_trash'); if(res.success) this.loadTrash(); else alert(res.message); },
     deleteItem: async function(type, id) { if(!confirm('Pindahkan ke sampah?')) return; const fd = new FormData(); fd.append('type', type); fd.append('id', id); const res = await this.postData('delete_item', fd); if(res.success) this.loadContent(); },
     
