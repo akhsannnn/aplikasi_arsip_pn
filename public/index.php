@@ -35,6 +35,7 @@
                 <div id="viewContent" class="hidden"><?php include '../views/content.php'; ?></div>
                 <div id="viewTemplates" class="hidden"><?php include '../views/templates.php'; ?></div>
                 <div id="viewTrash" class="hidden"><?php include '../views/trash.php'; ?></div>
+                <div id="viewUsers" class="hidden h-full flex flex-col min-h-0"><?php include '../views/users.php'; ?></div>
             </main>
         </div>
     </div>

@@ -1,0 +1,8 @@
+# Matikan eksekusi PHP di folder ini
+<FilesMatch "\.(php|php5|phtml)$">
+    Order Deny,Allow
+    Deny from all
+</FilesMatch>
+
+# Mencegah listing directory (user tidak bisa lihat isi folder lewat browser)
+Options -Indexes

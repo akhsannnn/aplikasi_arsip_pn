@@ -1,6 +1,26 @@
 <?php
 session_start();
+
+// --- SECURITY: SESSION TIMEOUT (30 MENIT) ---
+$timeout_duration = 1800; // 30 Menit x 60 Detik
+
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > $timeout_duration) {
+    session_unset();     
+    session_destroy();
+    // Jika request via AJAX, kirim sinyal timeout
+    if(isset($_GET['action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Session Habis. Silakan login kembali.']);
+        exit;
+    }
+}
+// Update waktu aktivitas terakhir
+$_SESSION['last_activity'] = time();
+
+// ... (Lanjutkan dengan kode lama: ini_set, require_once, dll) ...
 ini_set('display_errors', 0);
+// ...
+
 error_reporting(E_ALL);
 ob_start();
 
@@ -9,10 +29,12 @@ require_once '../src/Helpers/Response.php';
 require_once '../src/Services/AuthService.php';
 require_once '../src/Services/ArchiveService.php';
 require_once '../src/Services/TemplateService.php';
+require_once '../src/Services/UserService.php'; // <--- TAMBAHKAN INI
+// ...
 
 $database = new Database();
 $db = $database->getConnection();
-
+$userParams = new UserService($db); // <--- Inisialisasi Service Baru
 $auth = new AuthService($db);
 $archive = new ArchiveService($db);
 $template = new TemplateService($db);
@@ -38,8 +60,9 @@ try {
     // --- FILTER ROLE ADMIN ---
     $adminActions = [
         'dashboard',
-        'delete_year', 'get_trash', 'restore_item', 
-        'create_template', 'add_template_item', 'delete_template', 'delete_template_item', 'apply_template'
+        'delete_year', 'get_trash', 'restore_item', 'delete_permanent', 'empty_trash',
+        'create_template', 'add_template_item', 'delete_template', 'delete_template_item', 'apply_template',
+        'get_users', 'create_user', 'update_user', 'delete_user' // <--- TAMBAHKAN 4 INI
     ];
     if (in_array($action, $adminActions)) {
         if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -57,6 +80,23 @@ try {
         case 'logout':
             session_destroy();
             Response::json(true, 'Logout Berhasil');
+            break;
+
+            // --- USER MANAGEMENT ---
+        case 'get_users':
+            Response::json(true, 'Users Loaded', $userParams->getUsers());
+            break;
+        case 'create_user':
+            $res = $userParams->createUser($_POST['username'], $_POST['password'], $_POST['full_name'], $_POST['role']);
+            Response::json($res['success'], $res['message']);
+            break;
+        case 'update_user':
+            $res = $userParams->updateUser($_POST['id'], $_POST['username'], $_POST['password'], $_POST['full_name'], $_POST['role']);
+            Response::json($res['success'], $res['message']);
+            break;
+        case 'delete_user':
+            $res = $userParams->deleteUser($_POST['id']);
+            Response::json($res['success'], $res['message']);
             break;
 
         case 'dashboard':

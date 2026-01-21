@@ -15,6 +15,13 @@
             <i class="fa-solid fa-wand-magic-sparkles w-5 text-center text-gray-400 group-hover:text-yellow-600"></i> Template Manager
         </button>
 
+        <li class="admin-menu hidden mb-1">
+            <a href="#" onclick="app.setView('users')" class="flex items-center px-3 py-2 text-gray-600 hover:bg-green-50 hover:text-court-green rounded-md transition-all group">
+                <i class="fa-solid fa-users-gear w-5 text-center mr-2 text-gray-400 group-hover:text-court-green"></i>
+                <span class="font-medium text-sm">Manajemen User</span>
+            </a>
+        </li>
+
         <button onclick="app.setView('trash')" class="admin-menu hidden w-full text-left px-3 py-2.5 rounded-lg text-gray-700 hover:bg-red-50 hover:text-red-600 font-medium flex gap-3 items-center transition group">
             <i class="fa-solid fa-trash w-5 text-center text-gray-400 group-hover:text-red-500"></i> Tong Sampah
         </button>

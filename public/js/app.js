@@ -65,7 +65,8 @@ const app = {
     },
 
     setView: function(name) {
-        ['viewDashboard', 'viewContent', 'viewTemplates', 'viewTrash'].forEach(id => {
+        // Tambahkan 'viewUsers' ke array list ini
+        ['viewDashboard', 'viewContent', 'viewTemplates', 'viewTrash', 'viewUsers'].forEach(id => {
             const el = document.getElementById(id);
             if(el) el.classList.add('hidden');
         });
@@ -76,6 +77,7 @@ const app = {
         if(name === 'content') this.loadContent();
         if(name === 'trash') this.loadTrash();
         if(name === 'templates') this.loadTemplates();
+        if(name === 'users') this.loadUsers(); // <--- TAMBAHKAN INI
     },
 
     // --- 3. DATA LOADING ---
@@ -376,6 +378,59 @@ const app = {
         } 
     },
 
+    // --- USER MANAGEMENT ---
+    loadUsers: async function() {
+        const res = await this.postData('get_users');
+        if(res.success) {
+            const tbody = document.getElementById('userList');
+            if(!tbody) return;
+            
+            if(res.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-gray-400">Tidak ada data.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = res.data.map(u => {
+                const roleBadge = u.role === 'admin' 
+                    ? '<span class="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold">Admin</span>' 
+                    : '<span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">Staff</span>';
+                
+                return `
+                <tr class="hover:bg-gray-50 border-b last:border-0">
+                    <td class="p-4 font-bold text-gray-700">${u.full_name}</td>
+                    <td class="p-4 text-gray-600">${u.username}</td>
+                    <td class="p-4">${roleBadge}</td>
+                    <td class="p-4 text-xs text-gray-400">${u.created_at}</td>
+                    <td class="p-4 text-right">
+                        <button onclick="app.openUserModal(${u.id}, '${u.username}', '${u.full_name}', '${u.role}')" class="text-blue-500 hover:text-blue-700 mr-3 text-xs font-bold border border-blue-200 bg-blue-50 px-2 py-1 rounded"><i class="fa-solid fa-edit"></i> Edit</button>
+                        <button onclick="app.deleteUser(${u.id}, '${u.full_name}')" class="text-red-500 hover:text-red-700 text-xs font-bold border border-red-200 bg-red-50 px-2 py-1 rounded"><i class="fa-solid fa-trash"></i> Hapus</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+    },
+
+    openUserModal: function(id = null, username = '', fullname = '', role = 'staff') {
+        document.getElementById('userId').value = id || '';
+        document.getElementById('userUsername').value = username;
+        document.getElementById('userFullName').value = fullname;
+        document.getElementById('userRole').value = role;
+        document.getElementById('userPassword').value = ''; // Reset password
+        document.getElementById('userPassword').placeholder = id ? "(Biarkan kosong jika tidak diubah)" : "Password Baru";
+        document.getElementById('userPassword').required = !id; // Wajib jika buat baru
+        
+        document.getElementById('modalUserTitle').innerText = id ? "Edit User" : "Tambah User Baru";
+        this.openModal('modalUser');
+    },
+
+    deleteUser: async function(id, name) {
+        if(!confirm(`Yakin ingin menghapus user "${name}"?`)) return;
+        const fd = new FormData();
+        fd.append('id', id);
+        const res = await this.postData('delete_user', fd);
+        if(res.success) this.loadUsers(); else alert(res.message);
+    },
+
     // --- 5. HELPER RENDER FILE & FOLDER (Termasuk Ikon) ---
   renderFolders: function(folders) {
         const el = document.getElementById('folderContainer');
@@ -538,6 +593,32 @@ renderFiles: function(files) {
                 const desc = document.getElementById('detailDesc').innerText;
                 this.loadTemplateDetail(id, name, desc);
             }
+        }
+    
+        // Tambahkan ini di dalam setupListeners: function() { ... }
+        const formUser = document.getElementById('formUser');
+        if(formUser) {
+            formUser.onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const action = fd.get('id') ? 'update_user' : 'create_user';
+                
+                const btn = formUser.querySelector('button[type="submit"]');
+                const oldText = btn.innerText;
+                btn.innerText = '...'; btn.disabled = true;
+
+                const res = await this.postData(action, fd);
+                
+                btn.innerText = oldText; btn.disabled = false;
+                
+                if(res.success) {
+                    this.closeModal('modalUser');
+                    this.loadUsers();
+                    alert(res.message);
+                } else {
+                    alert(res.message);
+                }
+            };
         }
     },
 
