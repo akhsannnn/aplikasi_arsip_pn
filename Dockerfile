@@ -1,31 +1,22 @@
+# Gunakan PHP versi terbaru dengan Apache
 FROM php:8.2-apache
 
-# Install Extension yang dibutuhkan
-RUN docker-php-ext-install mysqli pdo pdo_mysql
+# 1. Install Ekstensi PHP yang Wajib (MySQLi)
+RUN docker-php-ext-install mysqli && docker-php-ext-enable mysqli
 
-# Enable Mod Rewrite
+# 2. Aktifkan Mod Rewrite (Agar URL cantik bisa jalan, jika nanti butuh)
 RUN a2enmod rewrite
 
-# Setup Document Root ke folder public
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
-
-# Set Working Directory
-WORKDIR /var/www/html
-
-# Copy semua file project
-COPY . /var/www/html
-
-# --- PERBAIKAN 1: LOAD SETTINGAN MAX SIZE ---
-# Copy file uploads.ini ke folder konfigurasi PHP agar limit 2GB aktif
+# 3. Setting Upload Limit (Agar bisa upload file besar)
+# Kita copy file settingan khusus
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
-# --- PERBAIKAN 2: IZIN FOLDER YANG BENAR ---
-# Buat folder 'public/uploads' (bukan uploads di root) dan beri akses tulis
-RUN mkdir -p /var/www/html/public/uploads \
-    && chown -R www-data:www-data /var/www/html/public/uploads \
-    && chmod -R 775 /var/www/html/public/uploads
+# 4. Set Work Directory
+WORKDIR /var/www/html
 
-# Expose port
+# 5. Berikan Hak Akses ke Folder www-data (Agar PHP bisa tulis file upload)
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html
+
+# Expose port 80 (Port standar web server di dalam container)
 EXPOSE 80

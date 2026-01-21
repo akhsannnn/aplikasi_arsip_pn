@@ -1,48 +1,60 @@
 version: '3.8'
 
 services:
-  # 1. Aplikasi Web Kamu (Laravel/PHP Native)
+  # ------------------------------------------------
+  # 1. WEB SERVER (PHP + Apache)
+  # ------------------------------------------------
   web:
     build: .
+    container_name: aplikasi_arsip_web
     ports:
-      - "8080:80"       # Akses web di localhost:8080
+      - "8080:80"  # Akses di browser: http://localhost:8080
     volumes:
-      - .:/var/www/html # Mount folder lokal ke container
-    environment:
-      - DB_HOST=db
-      - DB_USER=root
-      - DB_PASSWORD=root
-      - DB_NAME=db_arsip
+      - ./:/var/www/html  # Sinkronkan folder kodingan ke dalam container
     depends_on:
       - db
+    networks:
+      - arsip-network
 
-  # 2. Database MySQL
+  # ------------------------------------------------
+  # 2. DATABASE (MySQL)
+  # ------------------------------------------------
   db:
     image: mysql:8.0
-    command: --default-authentication-plugin=mysql_native_password
+    container_name: aplikasi_arsip_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: db_arsip
+      MYSQL_ROOT_PASSWORD: rootpassword  # Password root database
     volumes:
+      # Init SQL jalan otomatis saat container pertama kali dibuat
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Simpan data database agar tidak hilang saat di-down
       - db_data:/var/lib/mysql
-      # Auto import SQL saat pertama kali jalan
-      - ./db:/docker-entrypoint-initdb.d
-    ports:
-      - "3307:3306"     # Akses DB dari software luar (HeidiSQL/DBeaver) via port 3307
+    networks:
+      - arsip-network
 
-  # 3. phpMyAdmin (BARU DITAMBAHKAN)
+  # ------------------------------------------------
+  # 3. PHPMYADMIN (Opsional - Untuk cek DB)
+  # ------------------------------------------------
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
-    restart: always
-    ports:
-      - "8081:80"       # Akses phpMyAdmin di localhost:8081 (Beda port dengan web)
+    container_name: aplikasi_arsip_pma
     environment:
-      - PMA_HOST=db     # Nama service database di atas
-      - PMA_USER=root
-      - PMA_PASSWORD=root
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - "8081:80"  # Akses di: http://localhost:8081
     depends_on:
       - db
+    networks:
+      - arsip-network
 
+# Volume untuk menyimpan data database permanen
 volumes:
   db_data:
+
+# Network agar container bisa saling ngobrol
+networks:
+  arsip-network:
+    driver: bridge
