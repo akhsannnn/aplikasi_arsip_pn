@@ -3,6 +3,8 @@ const app = {
     year: new Date().getFullYear(),
     folderId: null,
     userRole: 'staff',
+    tempAction: { type: null, id: null },
+    searchTimeout: null,
 
     init: function() {
         this.checkSession();
@@ -154,37 +156,106 @@ const app = {
         this.loading(false);
     },
 
+    // --- FUNGSI SEARCH BAR ---
+    search: function(keyword) {
+        // Jika input kosong, kembalikan ke tampilan normal (folder saat ini)
+        if(keyword.length === 0) {
+            this.loadContent();
+            return;
+        }
+
+        // Jika kurang dari 3 huruf, jangan cari dulu (tapi jangan refresh)
+        if(keyword.length < 3) return;
+
+        // Debounce: Tunggu user selesai mengetik 500ms baru request ke server
+        // Agar tidak spam request setiap ketikan huruf
+        if(this.searchTimeout) clearTimeout(this.searchTimeout);
+        
+        this.searchTimeout = setTimeout(async () => {
+            // Tampilkan loading kecil di breadcrumb
+            document.getElementById('breadcrumb').innerHTML = `<span class="text-gray-400"><i class="fa-solid fa-circle-notch fa-spin"></i> Mencari "${keyword}"...</span>`;
+            
+            const res = await this.postData(`search&keyword=${keyword}`);
+            
+            if(res.success) {
+                // Update Breadcrumb jadi status pencarian
+                document.getElementById('breadcrumb').innerHTML = `<span class="font-bold text-court-gold"><i class="fa-solid fa-magnifying-glass"></i> Hasil Pencarian: "${keyword}"</span> <span class="text-xs text-gray-400 ml-2 cursor-pointer hover:underline" onclick="document.getElementById('searchInput').value='';app.loadContent()">(Klik X di pencarian untuk kembali)</span>`;
+                
+                this.renderFolders(res.data.folders);
+                this.renderFiles(res.data.files);
+                
+                // Jika kosong
+                if(res.data.folders.length === 0 && res.data.files.length === 0) {
+                    document.getElementById('fileList').innerHTML = '<tr><td colspan="2" class="text-center py-12 text-gray-400"><i class="fa-regular fa-face-frown text-2xl mb-2"></i><br>Tidak ditemukan dokumen dengan nama tersebut.</td></tr>';
+                    document.getElementById('folderContainer').innerHTML = '';
+                    document.getElementById('emptyState').classList.add('hidden');
+                }
+            }
+        }, 500);
+    },
+
+    // --- FUNGSI SEARCH SAMPAH ---
+    searchTrash: function(keyword) {
+        if(this.searchTimeout) clearTimeout(this.searchTimeout);
+        
+        this.searchTimeout = setTimeout(async () => {
+            // Jika kosong, load ulang semua sampah
+            if(keyword.length === 0) {
+                this.loadTrash();
+                return;
+            }
+            // Jika < 3 huruf, jangan request
+            if(keyword.length < 3) return;
+
+            // Tampilkan loading di list sampah
+            document.getElementById('trashList').innerHTML = '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-circle-notch fa-spin"></i> Mencari...</div>';
+            
+            const res = await this.postData(`search_trash&keyword=${keyword}`);
+            if(res.success) {
+                // Gunakan fungsi render yang sama dengan loadTrash
+                this.renderTrashItems(res.data);
+            }
+        }, 500);
+    },
+
     loadDashboard: async function() {
         const res = await this.postData('dashboard');
         if(res.success) {
             document.getElementById('dashFiles').innerText = res.data.total_files;
             document.getElementById('dashFolders').innerText = res.data.total_folders;
             
-            const list = document.getElementById('dashRecent');
+            const l = document.getElementById('dashRecent');
             if(res.data.recent.length === 0) {
-                list.innerHTML = '<div class="text-gray-400 text-xs italic text-center py-4">Belum ada aktivitas.</div>';
+                l.innerHTML = '<div class="text-gray-400 text-xs text-center py-6 border-2 border-dashed border-gray-100 rounded-lg">Belum ada aktivitas.</div>';
             } else {
-                list.innerHTML = res.data.recent.map(item => {
-                    const badge = item.role === 'admin' ? '<span class="bg-red-100 text-red-600 text-[9px] px-1 rounded font-bold ml-1">ADM</span>' : '<span class="bg-blue-100 text-blue-600 text-[9px] px-1 rounded font-bold ml-1">STF</span>';
+                l.innerHTML = res.data.recent.map(i => {
+                    let icon = i.type === 'upload' ? 'fa-file-arrow-up text-blue-500 bg-blue-50' : 'fa-folder-plus text-green-500 bg-green-50';
+                    let action = i.type === 'upload' ? 'mengupload' : 'membuat';
                     
-                    let icon = item.type === 'upload' ? 'fa-file-arrow-up' : 'fa-folder-plus';
-                    let bgClass = item.type === 'upload' ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500';
-                    let actionText = item.type === 'upload' ? 'Mengupload file' : 'Membuat folder';
-
+                    // FORMAT: APA | DIMANA | SIAPA | KAPAN
                     return `
-                    <div class="flex items-center justify-between border-b border-gray-50 py-3 last:border-0 hover:bg-gray-50 px-2 rounded transition">
-                        <div class="flex items-center gap-3 min-w-0">
-                            <div class="${bgClass} w-8 h-8 rounded-full flex items-center justify-center shrink-0">
-                                <i class="fa-solid ${icon} text-xs"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <div class="text-xs font-bold text-gray-700 truncate"><span class="font-normal text-gray-500">${actionText}:</span> ${item.name}</div>
-                                <div class="text-[10px] text-gray-400 flex items-center mt-0.5"><i class="fa-regular fa-user mr-1"></i> ${item.full_name || 'User'} ${badge}</div>
-                            </div>
+                    <div class="flex items-center gap-3 border-b border-gray-100 py-3 px-2 hover:bg-gray-50 transition rounded-lg">
+                        <div class="w-10 h-10 rounded-full ${icon} flex items-center justify-center shrink-0 shadow-sm">
+                            <i class="fa-solid ${i.type === 'upload' ? 'fa-file' : 'fa-folder'} text-sm"></i>
                         </div>
-                        <div class="text-[10px] text-gray-400 whitespace-nowrap ml-2 flex flex-col items-end">
-                            <span class="font-mono">${item.time ? item.time.split(' ')[1] : '-'}</span>
-                            <span class="text-[9px]">${item.time ? item.time.split(' ')[0] : '-'}</span>
+                        
+                        <div class="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-1">
+                            <div>
+                                <div class="font-bold text-gray-800 text-sm truncate" title="${i.name}">${i.name}</div>
+                                <div class="text-[10px] text-gray-500 flex items-center gap-1">
+                                    <i class="fa-solid fa-location-dot text-court-gold"></i> 
+                                    <span>${i.location_clean}</span>
+                                </div>
+                            </div>
+
+                            <div class="md:text-right">
+                                <div class="text-xs font-bold text-gray-600">
+                                    <i class="fa-regular fa-user text-blue-400 mr-1"></i> ${i.full_name || 'System'}
+                                </div>
+                                <div class="text-[10px] text-gray-400">
+                                    ${i.time}
+                                </div>
+                            </div>
                         </div>
                     </div>`;
                 }).join('');
@@ -192,69 +263,96 @@ const app = {
         }
     },
 
+    // 1. Load Data Awal
     loadTrash: async function() {
         const res = await this.postData('get_trash');
         if(res.success) {
-            let html = '';
-            
-            const row = (type, item) => {
-                // LOGIKA DETEKSI IKON DI TONG SAMPAH
-                let icon = 'fa-folder text-court-gold';
-                let bgIcon = 'bg-yellow-50';
-                
-                if (type === 'file') {
-                    bgIcon = 'bg-blue-50';
-                    const ext = (item.filename || '').split('.').pop().toLowerCase();
-                    icon = 'fa-file text-gray-400';
-                    if (['pdf'].includes(ext)) icon = 'fa-file-pdf text-red-500';
-                    else if (['doc', 'docx'].includes(ext)) icon = 'fa-file-word text-blue-500';
-                    else if (['xls', 'xlsx', 'csv'].includes(ext)) icon = 'fa-file-excel text-green-600';
-                    else if (['ppt', 'pptx'].includes(ext)) icon = 'fa-file-powerpoint text-orange-500';
-                    else if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) icon = 'fa-file-image text-purple-500';
-                    else if (['zip', 'rar'].includes(ext)) icon = 'fa-file-zipper text-yellow-600';
-                }
-
-                return `
-                <div class="bg-white p-4 border-b border-gray-100 flex items-center justify-between hover:bg-gray-50 transition group">
-                    <div class="flex items-center gap-4 overflow-hidden">
-                        <div class="${bgIcon} w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
-                            <i class="fa-solid ${icon} text-lg"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-sm font-bold text-gray-800 truncate">${item.name || item.filename}</div>
-                            <div class="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
-                                <span class="bg-gray-100 px-1.5 rounded text-[10px] font-medium text-gray-500 uppercase">${type}</span>
-                                <span><i class="fa-regular fa-trash-can mr-1"></i> ${item.deleter || 'Unknown'}</span>
-                                <span class="text-gray-300">|</span>
-                                <span>${item.deleted_at}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <button onclick="app.openRestoreModal('${type}', ${item.id}, '${item.name || item.filename}')" class="bg-white border border-green-200 text-green-600 hover:bg-green-600 hover:text-white p-2 rounded-lg shadow-sm transition" title="Pulihkan"><i class="fa-solid fa-rotate-left"></i></button>
-                        <button onclick="app.openDeletePermModal('${type}', ${item.id}, '${item.name || item.filename}')" class="bg-white border border-red-200 text-red-600 hover:bg-red-600 hover:text-white p-2 rounded-lg shadow-sm transition" title="Hapus Permanen"><i class="fa-solid fa-times"></i></button>
-                    </div>
-                </div>`;
-            };
-            
-            if (res.data.folders.length === 0 && res.data.files.length === 0) {
-                document.getElementById('trashList').innerHTML = `<div class="flex flex-col items-center justify-center h-96 text-gray-400"><div class="bg-gray-100 p-6 rounded-full mb-4"><i class="fa-regular fa-trash-can text-4xl text-gray-300"></i></div><h3 class="text-sm font-bold text-gray-600">Tong Sampah Kosong</h3><p class="text-xs text-gray-400 mt-1">Belum ada item yang dihapus.</p></div>`;
-            } else {
-                let content = '';
-                res.data.folders.forEach(f => content += row('folder', f));
-                res.data.files.forEach(f => content += row('file', f));
-                document.getElementById('trashList').innerHTML = content;
-            }
+            this.renderTrashItems(res.data);
         }
+    },
+
+    // 2. Render UI (Dipakai oleh loadTrash DAN searchTrash)
+    renderTrashItems: function(data) {
+        const el = document.getElementById('trashList');
+        if(!el) return;
+
+        if (data.folders.length === 0 && data.files.length === 0) {
+            el.innerHTML = `<div class="flex flex-col items-center justify-center h-96 text-gray-400"><div class="bg-gray-100 p-6 rounded-full mb-4"><i class="fa-regular fa-trash-can text-4xl text-gray-300"></i></div><h3 class="text-sm font-bold text-gray-600">Tidak ditemukan</h3><p class="text-xs text-gray-400 mt-1">Tong sampah kosong atau tidak ada hasil.</p></div>`;
+            return;
+        }
+
+        let html = '';
+        const row = (type, item) => {
+            // Logic Icon
+            let icon = 'fa-folder text-court-gold';
+            let bgIcon = 'bg-yellow-50';
+            
+            if (type === 'file') {
+                bgIcon = 'bg-blue-50';
+                const ext = (item.filename || '').split('.').pop().toLowerCase();
+                icon = 'fa-file text-gray-400';
+                if (['pdf'].includes(ext)) icon = 'fa-file-pdf text-red-500';
+                else if (['doc', 'docx'].includes(ext)) icon = 'fa-file-word text-blue-500';
+                else if (['xls', 'xlsx', 'csv'].includes(ext)) icon = 'fa-file-excel text-green-600';
+                else if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) icon = 'fa-file-image text-purple-500';
+            }
+
+            return `
+            <div class="bg-white p-4 border-b border-gray-100 flex items-center justify-between hover:bg-gray-50 transition group">
+                <div class="flex items-center gap-4 overflow-hidden">
+                    <div class="${bgIcon} w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
+                        <i class="fa-solid ${icon} text-lg"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="text-sm font-bold text-gray-800 truncate">${item.name || item.filename}</div>
+                        <div class="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+                            <span class="bg-gray-100 px-1.5 rounded text-[10px] font-medium text-gray-500 uppercase">${type}</span>
+                            <span><i class="fa-regular fa-trash-can mr-1"></i> ${item.deleter || 'Unknown'}</span>
+                            <span class="text-gray-300">|</span>
+                            <span>${item.deleted_at}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <button onclick="app.openRestoreModal('${type}', ${item.id}, '${item.name || item.filename}')" class="bg-white border border-green-200 text-green-600 hover:bg-green-600 hover:text-white p-2 rounded-lg shadow-sm transition" title="Pulihkan"><i class="fa-solid fa-rotate-left"></i></button>
+                    <button onclick="app.openDeletePermModal('${type}', ${item.id}, '${item.name || item.filename}')" class="bg-white border border-red-200 text-red-600 hover:bg-red-600 hover:text-white p-2 rounded-lg shadow-sm transition" title="Hapus Permanen"><i class="fa-solid fa-times"></i></button>
+                </div>
+            </div>`;
+        };
+
+        data.folders.forEach(f => html += row('folder', f));
+        data.files.forEach(f => html += row('file', f));
+        el.innerHTML = html;
     },
 
     // --- 4. TEMPLATE MANAGER ---
     loadTemplates: async function() {
         const res = await this.postData('get_templates');
+        
         if(res.success) {
             const list = document.getElementById('templateList');
-            if(res.data.length === 0) { list.innerHTML = '<div class="text-center text-gray-400 text-xs mt-10">Belum ada template.</div>'; return; }
-            list.innerHTML = res.data.map(t => `<div onclick="app.loadTemplateDetail(${t.id}, '${t.name}', '${t.description||''}')" class="p-3 border rounded cursor-pointer hover:bg-blue-50 hover:border-blue-300 flex justify-between items-center group transition"><div><div class="font-bold text-gray-700 text-sm">${t.name}</div><div class="text-[10px] text-gray-400 truncate w-32">${t.description||'-'}</div></div><i class="fa-solid fa-chevron-right text-gray-300"></i></div>`).join('');
+            if(!list) return; // Pastikan elemen ada
+
+            if(res.data.length === 0) {
+                list.innerHTML = '<div class="text-center text-gray-400 text-xs mt-10">Belum ada template.</div>';
+                return;
+            }
+
+            // UPDATE: Render dengan aman (Escape tanda kutip agar JS tidak error)
+            list.innerHTML = res.data.map(t => {
+                const safeName = t.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const safeDesc = (t.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                
+                return `
+                <div onclick="app.loadTemplateDetail(${t.id}, '${safeName}', '${safeDesc}')" 
+                     class="p-3 border rounded-lg cursor-pointer bg-white hover:bg-blue-50 hover:border-blue-300 flex justify-between items-center group transition mb-2 shadow-sm">
+                    <div class="overflow-hidden">
+                        <div class="font-bold text-gray-700 text-sm truncate">${t.name}</div>
+                        <div class="text-[10px] text-gray-400 truncate w-full pr-2">${t.description || '-'}</div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-gray-300 group-hover:text-blue-400"></i>
+                </div>`;
+            }).join('');
         }
     },
 
@@ -284,16 +382,33 @@ const app = {
         el.innerHTML = folders.map(f => {
             const canDelete = this.userRole === 'admin' || this.userRole === 'staff';
             
-            // PERBAIKAN: Panggil openSoftDeleteModal dengan parameter nama folder
+            const isSearch = document.getElementById('breadcrumb').innerText.includes('Pencarian');
+            const yearBadge = (isSearch || f.year != this.year) 
+                ? `<span class="bg-blue-100 text-blue-700 text-[9px] px-1.5 py-0.5 rounded ml-1 border border-blue-200 font-mono">${f.year}</span>` 
+                : '';
+
             const delBtn = canDelete 
                 ? `<button onclick="event.stopPropagation();app.openSoftDeleteModal('folder', ${f.id}, '${f.name}')" class="absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 bg-white rounded-full p-1 shadow transition"><i class="fa-solid fa-trash text-xs"></i></button>` 
                 : '';
 
-            return `<div onclick="app.openFolder(${f.id})" class="bg-white p-3 rounded shadow-sm border hover:border-court-green cursor-pointer relative group transition hover:-translate-y-1"><i class="fa-solid fa-folder text-3xl text-court-green mb-2"></i><div class="font-bold text-gray-700 truncate text-xs" title="${f.name}">${f.name}</div><div class="text-[10px] text-gray-400 truncate">${f.description || '-'}</div>${delBtn}</div>`;
+            return `
+            <div onclick="app.openFolder(${f.id})" class="bg-white p-3 rounded shadow-sm border hover:border-court-green cursor-pointer relative group transition hover:-translate-y-1">
+                <i class="fa-solid fa-folder text-3xl text-court-green mb-2"></i>
+                <div class="font-bold text-gray-700 truncate text-xs flex items-center gap-1" title="${f.name}">
+                    ${f.name} ${yearBadge}
+                </div>
+                <div class="text-[10px] text-gray-400 truncate">${f.description || '-'}</div>
+                
+                <div class="text-[9px] text-gray-300 mt-2 flex justify-between items-center border-t pt-1 border-gray-100">
+                    <span>${f.created_at ? f.created_at.split(' ')[0] : '-'}</span>
+                    <span title="${f.creator || 'Admin'}"><i class="fa-regular fa-user"></i></span>
+                </div>
+
+                ${delBtn}
+            </div>`;
         }).join('');
     },
-
-    renderFiles: function(files) {
+renderFiles: function(files) {
         const el = document.getElementById('fileList');
         const empty = document.getElementById('emptyState');
         
@@ -302,30 +417,34 @@ const app = {
         } else {
             empty.classList.add('hidden');
             el.innerHTML = files.map(f => {
+                // ... (Kode deleteBtn & iconClass sama seperti sebelumnya) ...
                 const canDelete = this.userRole === 'admin' || this.userRole === 'staff';
-                
-                // PERBAIKAN: Panggil openSoftDeleteModal dengan parameter nama file (f.filename)
-                const delBtn = canDelete 
-                    ? `<button onclick="app.openSoftDeleteModal('file', ${f.id}, '${f.filename}')" class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>` 
-                    : '<span class="text-[10px] text-gray-300"><i class="fa-solid fa-lock"></i></span>';
-                
-                // ... (sisa logika icon tetap sama) ...
+                const delBtn = canDelete ? `<button onclick="app.openSoftDeleteModal('file', ${f.id}, '${f.filename}')" class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>` : '';
                 const ext = f.filename.split('.').pop().toLowerCase();
                 let iconClass = 'fa-file text-gray-400';
-                if (['pdf'].includes(ext)) iconClass = 'fa-file-pdf text-red-500';
-                else if (['doc', 'docx'].includes(ext)) iconClass = 'fa-file-word text-blue-500';
-                else if (['xls', 'xlsx', 'csv'].includes(ext)) iconClass = 'fa-file-excel text-green-600';
-                else if (['ppt', 'pptx'].includes(ext)) iconClass = 'fa-file-powerpoint text-orange-500';
-                else if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) iconClass = 'fa-file-image text-purple-500';
-                else if (['zip', 'rar'].includes(ext)) iconClass = 'fa-file-zipper text-yellow-600';
+                if(['pdf'].includes(ext)) iconClass = 'fa-file-pdf text-red-500'; 
+                // ... dst ...
+
+                // Badge Tahun (Dimana)
+                const isSearch = document.getElementById('breadcrumb').innerText.includes('Pencarian');
+                const yearBadge = (isSearch && f.year) ? `<span class="bg-gray-100 text-gray-600 text-[10px] px-1.5 rounded ml-2 border border-gray-200 font-bold">Arsip ${f.year}</span>` : '';
 
                 return `
                 <tr class="border-b hover:bg-blue-50 transition">
-                    <td class="p-3 flex items-center gap-3">
-                        <i class="fa-solid ${iconClass} text-xl w-6 text-center"></i>
-                        <a href="${f.filepath}" target="_blank" class="hover:underline text-court-dark text-sm font-medium truncate max-w-xs">${f.filename}</a>
+                    <td class="p-3 flex items-start gap-3">
+                        <i class="fa-solid ${iconClass} text-xl w-6 text-center mt-1"></i>
+                        <div class="min-w-0 flex-1">
+                            <a href="${f.filepath}" target="_blank" class="hover:underline text-court-dark text-sm font-bold truncate block">
+                                ${f.filename} ${yearBadge}
+                            </a>
+                            
+                            <div class="text-[10px] text-gray-500 mt-1 flex items-center gap-3">
+                                <span class="flex items-center gap-1"><i class="fa-regular fa-clock text-court-gold"></i> ${f.uploaded_at}</span>
+                                <span class="flex items-center gap-1"><i class="fa-regular fa-user text-blue-400"></i> ${f.uploader || 'Admin'}</span>
+                            </div>
+                        </div>
                     </td>
-                    <td class="p-3 text-right">${delBtn}</td>
+                    <td class="p-3 text-right align-middle">${delBtn}</td>
                 </tr>`;
             }).join('');
         }

@@ -4,12 +4,12 @@
             <img src="css/logo.jpg" alt="Logo PN" class="h-12 w-12 rounded-full object-contain">
         </div>
         <span class="font-bold text-court-gold tracking-wide text-sm md:text-base leading-tight">
-            SISTEM ARSIP AMPUH PENGADILAN NEGERI MAKASSAR
+            SISTEM ARSIP PENGADILAN NEGERI MAKASSAR
         </span>
     </div>
 
     <div class="flex items-center gap-4 text-sm shrink-0">
-        <div class="flex items-center gap-2 bg-court-dark px-3 py-1.5 rounded-full">
+        <div class="flex items-center gap-2 bg-court-dark px-3 py-1.5 rounded-full hidden sm:flex">
             <i class="fa-solid fa-user-circle text-gray-300 text-base"></i>
             <span id="userDisplay" class="font-bold text-court-gold truncate max-w-[120px]">User</span>
         </div>

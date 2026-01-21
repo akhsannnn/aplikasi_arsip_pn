@@ -206,6 +206,35 @@ try {
             $count = $archive->emptyTrash();
             Response::json(true, "Sampah dikosongkan. $count file fisik dihapus.");
             break;
+        // ... (case lainnya)
+
+        // --- FITUR SEARCH ---
+        case 'search':
+            $keyword = $_GET['keyword'] ?? '';
+            // Minimal 3 karakter baru mencari (agar database tidak berat)
+            if(strlen($keyword) < 3) {
+                Response::json(true, 'Ketik minimal 3 huruf', ['folders'=>[], 'files'=>[]]);
+            } else {
+                $result = $archive->search($keyword);
+                Response::json(true, 'Hasil Pencarian', $result);
+            }
+            break;
+        // ... case lainnya ...
+
+        case 'search_trash':
+            $keyword = $_GET['keyword'] ?? '';
+            // Minimal 3 huruf untuk mencari
+            if(strlen($keyword) < 3) {
+                // Jika kosong/pendek, kembalikan semua sampah (default)
+                Response::json(true, 'Load Default', $archive->getTrash());
+            } else {
+                Response::json(true, 'Hasil Pencarian Sampah', $archive->searchTrash($keyword));
+            }
+            break;
+
+        // ... case default ...
+
+        // ... (case default)
 
         default:
             Response::json(false, "Action '$action' not found");
